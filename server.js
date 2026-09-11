@@ -815,12 +815,6 @@ mongoose.connect(process.env.MONGODB_URI, {
       if (process.env.DASHBOARD_IP_ALLOWLIST) {
         console.log('🔒 Dashboard IP allowlist enabled');
       }
-      try {
-        require('./reviews-bot/index.js');
-        console.log('🤖 Reviews Bot initialized seamlessly with Auth server');
-      } catch (e) {
-        console.warn('⚠️  Reviews bot module auto-start skipped:', e.message);
-      }
     });
   })
   .catch((err) => {
@@ -829,12 +823,6 @@ mongoose.connect(process.env.MONGODB_URI, {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Rakha Auth server running on http://localhost:${PORT}`);
       console.log(`ℹ️  Note: Update MONGODB_URI in .env with your real MongoDB Atlas connection string when deploying to Render.`);
-      try {
-        require('./reviews-bot/index.js');
-        console.log('🤖 Reviews Bot initialized seamlessly with Auth server');
-      } catch (e) {
-        console.warn('⚠️  Reviews bot module auto-start skipped:', e.message);
-      }
     });
   });
 
