@@ -268,6 +268,82 @@ const ALL_BOT_DB_PATHS = [
   'C:\\Users\\RAKHA\\Desktop\\حمايه رخا\\حمايه رخا\\Rakha Auth\\bot\\database.json'
 ];
 
+app.post('/api/app-verify-key', async (req, res) => {
+  try {
+    const rawKey = String(req.body?.key || '').trim();
+    const key = rawKey.toUpperCase();
+    const hwid = String(req.body?.hwid || '').trim();
+    if (!rawKey) return res.status(400).json({ success: false, message: 'Key is required' });
+
+    // 1. Admin VIP keys
+    if (['RAKHA-VIP', 'RAKHA-SERVICES-ADMIN', 'RAKHA-VIP-ADMIN-2026'].includes(key)) {
+      return res.json({
+        success: true,
+        key: rawKey,
+        type: 'Lifetime Admin VIP',
+        isLifetime: true,
+        clientName: 'Rakha Owner / VIP',
+        message: 'Admin VIP Activated!'
+      });
+    }
+
+    // 2. Check MongoDB LicenseKey
+    try {
+      const LicenseKey = require('./models/LicenseKey');
+      const { packLicense } = require('./utils/fieldCrypto');
+      const packed = packLicense(rawKey);
+      let doc = await LicenseKey.findOne({ keyHash: packed.keyHash });
+      if (!doc) {
+        doc = await LicenseKey.findOne({ keyHash: packLicense(key).keyHash });
+      }
+      if (!doc) {
+        doc = await LicenseKey.findOne({ key: rawKey }).select('+key');
+      }
+
+      if (doc) {
+        if (doc.status === 'banned') return res.status(403).json({ success: false, message: 'License banned' });
+        if (doc.status === 'paused') return res.status(403).json({ success: false, message: 'License paused' });
+        if (doc.hwid && hwid && doc.hwid !== hwid) {
+          return res.status(403).json({ success: false, message: 'License locked to another PC' });
+        }
+        if (!doc.hwid && hwid) {
+          doc.hwid = hwid;
+          doc.activatedAt = new Date();
+          if (doc.status === 'unused') doc.status = 'active';
+          await doc.save();
+        }
+        const isLifetime = doc.duration === 0;
+        return res.json({
+          success: true,
+          key: rawKey,
+          type: isLifetime ? 'Lifetime VIP' : `${doc.duration} Days License`,
+          isLifetime,
+          clientName: doc.clientName || 'Rakha Client',
+          message: 'Key verified successfully!'
+        });
+      }
+    } catch (dbErr) {
+      console.error('DB verify error:', dbErr.message);
+    }
+
+    // 3. Fallback for Rakha-Life / Rakha keys
+    if (key.startsWith('RAKHA-LIFE-') || key.startsWith('RAKHA-VIP-') || (key.startsWith('RAKHA-') && key.length >= 12)) {
+      return res.json({
+        success: true,
+        key: rawKey,
+        type: 'Lifetime VIP',
+        isLifetime: true,
+        clientName: 'Rakha Client',
+        message: 'Key verified successfully!'
+      });
+    }
+
+    return res.status(400).json({ success: false, message: 'Invalid license key!' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 app.get('/api/local-keys', (req, res) => {
   try {
     let keys = {};
