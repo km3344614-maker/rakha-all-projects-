@@ -712,7 +712,7 @@ app.post('/api/submit-review', async (req, res) => {
     });
 
     const postReq = https.request({
-      hostname: 'rakha-key-gen-bot.509.rip',
+      hostname: 'rakha-bots-unified.509.rip',
       path: '/api/submit-review',
       method: 'POST',
       headers: {
