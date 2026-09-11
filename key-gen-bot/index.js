@@ -41,11 +41,24 @@ process.on('unhandledRejection', (reason) => {
 const configPath = path.join(__dirname, 'config.json');
 let config = {};
 try {
-  config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  if (fs.existsSync(configPath)) {
+    config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  }
 } catch (e) {
   console.error('Failed to load config.json:', e);
-  process.exit(1);
 }
+
+// Support Environment Variables from Cloud / 509 Cloud
+config.botToken = (process.env.BOT_TOKEN || process.env.DISCORD_TOKEN || config.botToken || '').trim();
+config.clientId = (process.env.CLIENT_ID || config.clientId || '').trim();
+config.logWebhook = (process.env.LOG_WEBHOOK || config.logWebhook || '').trim();
+config.channels = config.channels || {};
+if (process.env.CHANNEL_GENERATE) config.channels.generate = process.env.CHANNEL_GENERATE.trim();
+if (process.env.CHANNEL_ENABLE) config.channels.enable = process.env.CHANNEL_ENABLE.trim();
+if (process.env.CHANNEL_DISABLE) config.channels.disable = process.env.CHANNEL_DISABLE.trim();
+if (process.env.CHANNEL_STOP) config.channels.stop = process.env.CHANNEL_STOP.trim();
+if (process.env.CHANNEL_LOGS) config.channels.logs = process.env.CHANNEL_LOGS.trim();
+if (process.env.CHANNEL_REVIEWS) config.channels.reviews = process.env.CHANNEL_REVIEWS.trim();
 
 // 2. Database Setup
 const dbPath = path.join(__dirname, 'database.json');
