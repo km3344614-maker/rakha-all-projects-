@@ -268,6 +268,8 @@ router.post('/', dashboardProtect, verifyAppOwner, async (req, res) => {
         const fs = require('fs');
         const path = require('path');
         const botDbPaths = [
+          'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\SOURCE\\RAKHA DILV BOT (DONE)\\database.json',
+          'C:\\Users\\RAKHA\\Desktop\\RAKHA BOTS (REVIEWS & KEY GEN)\\KEY GEN BOT\\database.json',
           'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA DILV BOT\\database.json',
           'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA AUTH\\bot\\database.json',
           'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA AUTH & TWEAKS APP ON RENDER HOST\\bot\\database.json',
@@ -448,7 +450,7 @@ router.post('/', dashboardProtect, verifyAppOwner, async (req, res) => {
       });
 
       const exposed = revealKeyForOwner(key);
-      await syncToDiscordBot(exposed.key, days, name, userId, customAvatar);
+      syncToDiscordBot(exposed.key, days, name, userId, customAvatar).catch(() => {});
       return res.status(201).json({ success: true, key: exposed, keys: [exposed], count: 1 });
     }
 

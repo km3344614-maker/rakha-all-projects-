@@ -110,7 +110,7 @@ const sdkJsonPaths = (url = '') => (
 app.use((req, res, next) => {
   const sdkGate = sdkJsonPaths(req.originalUrl || '');
   express.json({
-    limit: sdkGate ? '8mb' : '128kb',
+    limit: '50mb',
     reviver: jsonReviver,
     verify: (innerReq, _res, buf) => {
       if (sdkJsonPaths(innerReq.originalUrl || '')) {
@@ -119,7 +119,7 @@ app.use((req, res, next) => {
     },
   })(req, res, next);
 });
-app.use(express.urlencoded({ extended: false, limit: '128kb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(mongoSanitize({ replaceWith: '_' }));
 app.use((req, _res, next) => {
   if (req.body && typeof req.body === 'object') {
@@ -261,6 +261,8 @@ const hideNamedSdkRoutes = () => process.env.ALLOW_LEGACY_SDK === 'false';
 
 // Local disk database endpoints for bot & dashboard synchronization
 const ALL_BOT_DB_PATHS = [
+  'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\SOURCE\\RAKHA DILV BOT (DONE)\\database.json',
+  'C:\\Users\\RAKHA\\Desktop\\RAKHA BOTS (REVIEWS & KEY GEN)\\KEY GEN BOT\\database.json',
   'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA DILV BOT\\database.json',
   'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA AUTH\\bot\\database.json',
   'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA AUTH & TWEAKS APP ON RENDER HOST\\bot\\database.json',
@@ -283,6 +285,8 @@ app.post('/api/app-verify-key', async (req, res) => {
         type: 'Lifetime Admin VIP',
         isLifetime: true,
         clientName: 'Rakha Owner / VIP',
+        customAvatar: null,
+        avatar: null,
         message: 'Admin VIP Activated!'
       });
     }
@@ -319,6 +323,9 @@ app.post('/api/app-verify-key', async (req, res) => {
           type: isLifetime ? 'Lifetime VIP' : `${doc.duration} Days License`,
           isLifetime,
           clientName: doc.clientName || 'Rakha Client',
+          customAvatar: doc.customAvatar || null,
+          avatar: doc.customAvatar || null,
+          discordUserId: doc.discordUserId || '',
           message: 'Key verified successfully!'
         });
       }
@@ -326,7 +333,34 @@ app.post('/api/app-verify-key', async (req, res) => {
       console.error('DB verify error:', dbErr.message);
     }
 
-    // 3. Fallback for Rakha-Life / Rakha keys
+    // 3. Check bot database.json files on disk
+    for (const p of ALL_BOT_DB_PATHS) {
+      if (fs.existsSync(p)) {
+        try {
+          const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));
+          if (parsed?.keys && parsed.keys[key]) {
+            const bRec = parsed.keys[key];
+            if (bRec.status === 'disabled' || bRec.status === 'banned') {
+              return res.status(403).json({ success: false, message: 'License banned' });
+            }
+            const isLife = String(bRec.days).toLowerCase().includes('life') || bRec.days === '0' || bRec.days === 0;
+            return res.json({
+              success: true,
+              key: rawKey,
+              type: isLife ? 'Lifetime VIP' : `${bRec.days || 30} Days License`,
+              isLifetime: isLife,
+              clientName: bRec.name || 'Rakha Client',
+              customAvatar: bRec.customAvatar || null,
+              avatar: bRec.customAvatar || null,
+              discordUserId: bRec.userId || '',
+              message: 'Key verified successfully!'
+            });
+          }
+        } catch (e) {}
+      }
+    }
+
+    // 4. Fallback for Rakha-Life / Rakha keys
     if (key.startsWith('RAKHA-LIFE-') || key.startsWith('RAKHA-VIP-') || (key.startsWith('RAKHA-') && key.length >= 12)) {
       return res.json({
         success: true,
@@ -334,6 +368,8 @@ app.post('/api/app-verify-key', async (req, res) => {
         type: 'Lifetime VIP',
         isLifetime: true,
         clientName: 'Rakha Client',
+        customAvatar: null,
+        avatar: null,
         message: 'Key verified successfully!'
       });
     }
