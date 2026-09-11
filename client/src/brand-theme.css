@@ -1,0 +1,260 @@
+
+
+:root {
+  --brand: #ffffff;
+  --brand-rgb: 255, 255, 255;
+  --brand-light: #e8e8e8;
+  --brand-lighter: #ffffff;
+  --brand-soft: #e8e8e8;
+  --brand-dark: #c8c8c8;
+  --brand-darker: #8a8a8a;
+  --brand-darkest: #1a1a1a;
+
+  --color-primary: #ffffff;
+  --color-primary-dark: #c8c8c8;
+  --color-primary-darker: #8a8a8a;
+  --color-primary-darkest: #1a1a1a;
+  --color-primary-a05: #ffffff0d;
+  --color-primary-a10: #ffffff1a;
+  --color-primary-a15: #ffffff26;
+  --color-primary-a20: #ffffff33;
+  --color-primary-a25: #ffffff40;
+  --color-primary-a30: #ffffff4d;
+  --color-primary-a35: #ffffff59;
+  --color-primary-a40: #ffffff66;
+  --color-primary-a50: #ffffff80;
+  --color-primary-a60: #ffffff99;
+  --color-primary-a70: #ffffffb3;
+
+  --accent: #ffffff;
+  --accent-light: #e8e8e8;
+  --accent-glow: rgba(255, 255, 255, 0.35);
+
+  --info: #e8e8e8;
+  --info-bg: rgba(255, 255, 255, 0.12);
+  --success: #e8e8e8;
+  --success-bg: rgba(255, 255, 255, 0.12);
+  --warning: #ffffff;
+  --warning-bg: rgba(255, 255, 255, 0.12);
+  --danger: #f87171;
+
+  --color-success: #ffffff;
+  --color-info: #e8e8e8;
+  --color-info-dark: #ffffff;
+  --color-info-a05: #ffffff0d;
+  --color-info-a10: #ffffff1a;
+  --color-info-a15: #ffffff26;
+  --color-info-a20: #ffffff33;
+  --color-info-a30: #ffffff4d;
+  --color-info-a50: #ffffff80;
+  --color-info-a70: #ffffffb3;
+  --color-warning: #ffffff;
+  --color-neutral: #c8c8c8;
+}
+
+
+.btn-primary,
+.auth-btn-primary,
+.login-submit,
+.panel-btn-solid,
+.panel-app .btn-primary {
+  background: rgba(255, 255, 255, 0.05) !important;
+  background-image: none !important;
+  border: 1.5px solid #ffffff !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  text-shadow: none !important;
+  backdrop-filter: blur(28px) !important;
+  -webkit-backdrop-filter: blur(28px) !important;
+  transition: box-shadow 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease !important;
+}
+
+.btn-primary::after,
+.auth-btn-primary::after {
+  display: none !important;
+}
+
+.btn-primary:hover:not(:disabled),
+.auth-btn-primary:hover:not(:disabled),
+.login-submit:hover:not(:disabled),
+.panel-btn-solid:hover,
+.panel-app .btn-primary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: #ffffff !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  transform: none;
+}
+
+.btn-primary:active:not(:disabled),
+.auth-btn-primary:active:not(:disabled),
+.login-submit:active:not(:disabled),
+.panel-btn-solid:active,
+.panel-app .btn-primary:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18) !important;
+  border-color: #e8e8e8 !important;
+  color: #e8e8e8 !important;
+  box-shadow:
+    0 0 16px rgba(255, 255, 255, 0.65),
+    0 0 36px rgba(255, 255, 255, 0.35),
+    inset 0 0 22px rgba(255, 255, 255, 0.2) !important;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.55);
+}
+
+
+.first-app-submit,
+.create-app-dock .first-app-submit {
+  background: #ffffff !important;
+  background-image: none !important;
+  border: 1px solid #ffffff !important;
+  color: #0a0a0a !important;
+  text-shadow: none !important;
+  box-shadow: 0 6px 22px rgba(255, 255, 255, 0.35) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.create-app-dock .first-app-submit:hover:not(:disabled),
+.first-app-submit:hover:not(:disabled) {
+  background: #f2f2f2 !important;
+  border-color: #f2f2f2 !important;
+  color: #0a0a0a !important;
+  box-shadow: 0 8px 28px rgba(255, 255, 255, 0.45) !important;
+  transform: translateY(-1px);
+}
+
+.first-app-submit:active:not(:disabled),
+.create-app-dock .first-app-submit:active:not(:disabled) {
+  background: #d4d4d4 !important;
+  color: #0a0a0a !important;
+  box-shadow: 0 0 18px rgba(255, 255, 255, 0.4) !important;
+  text-shadow: none !important;
+}
+
+.btn-primary svg,
+.auth-btn-primary svg,
+.login-submit svg,
+.panel-btn-solid svg,
+.first-app-submit svg {
+  color: inherit;
+  stroke: currentColor;
+}
+
+
+.panel-btn-outline,
+.panel-app .btn-secondary,
+.panel-app .btn-ghost {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1.5px solid #ffffff !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(28px) !important;
+  -webkit-backdrop-filter: blur(28px) !important;
+  transition: box-shadow 0.15s ease, background 0.15s ease !important;
+}
+
+.panel-btn-outline:hover,
+.panel-app .btn-secondary:hover,
+.panel-app .btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: #ffffff !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+.panel-btn-outline:active,
+.panel-app .btn-secondary:active,
+.panel-app .btn-ghost:active {
+  background: rgba(255, 255, 255, 0.16) !important;
+  box-shadow:
+    0 0 14px rgba(255, 255, 255, 0.55),
+    0 0 28px rgba(255, 255, 255, 0.25) !important;
+}
+
+.nav-item.active {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.05)) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.stat-card:hover,
+.card-hover:hover {
+  box-shadow: 0 16px 40px rgba(255, 255, 255, 0.2) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.status-pill-online {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
+}
+
+.status-pill-online .status-pill-dot {
+  background: #e8e8e8 !important;
+}
+
+.badge-active {
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  box-shadow: none;
+}
+
+.auth-link,
+.auth-shell-badge,
+.auth-shell-brand-icon {
+  color: #ffffff !important;
+}
+
+.auth-shell-brand-text em {
+  background: linear-gradient(90deg, #ffffff, #ffffff) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+}
+
+.auth-premium-card {
+  background: transparent !important;
+  background-image: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+
+.auth-premium-card-inner {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  backdrop-filter: blur(80px) !important;
+  -webkit-backdrop-filter: blur(80px) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+    0 24px 64px rgba(0, 0, 0, 0.35) !important;
+}
+
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.4) !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.65) !important;
+}
+
+@keyframes panelPageFadeSlide {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.995);
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+.panel-page-anim {
+  animation: panelPageFadeSlide 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity, filter;
+}

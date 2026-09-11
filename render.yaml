@@ -1,0 +1,62 @@
+services:
+  - type: web
+    name: rakha-auth
+    runtime: node
+    region: frankfurt
+    plan: starter
+    healthCheckPath: /api/health
+    buildCommand: npm install
+    startCommand: node server.js
+    disk:
+      name: rakha-data
+      mountPath: /data
+      sizeGB: 5
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "20"
+      - key: TRUST_PROXY
+        value: "2"
+      - key: APP_URL
+        value: https://auth.rakha.app
+      - key: FILE_STORAGE_DIR
+        value: /data/appfiles
+      - key: UPLOADS_DIR
+        value: /data/uploads
+      - key: REQUIRE_SDK_SIGNATURE
+        value: "true"
+      - key: REQUIRE_SDK_ENCRYPTION
+        value: "true"
+      - key: ALLOW_KEY_AUTO_REGISTER
+        value: "true"
+      - key: VPN_FAIL_OPEN
+        value: "false"
+      - key: DASHBOARD_SESSION_TTL
+        value: 12h
+      - key: DASHBOARD_IDLE_TTL
+        value: 30m
+      - key: SDK_HS2_TTL_SECONDS
+        value: "1800"
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FILE_ENCRYPTION_KEY
+        sync: false
+      - key: FILE_TICKET_SECRET
+        sync: false
+      - key: SDK_MASTER_KEY
+        sync: false
+      - key: DASHBOARD_TRANSPORT_KEY
+        sync: false
+      - key: SDK_SSL_PINS
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: BOT_SECRET
+        sync: false
+      - key: DISCORD_SECURITY_WEBHOOK
+        sync: false

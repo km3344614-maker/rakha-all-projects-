@@ -1,0 +1,39 @@
+# Secrets & local env — never bake into the image
+.env
+.env.*
+!.env.example
+rakha.secret
+.rakhaauth
+app.secret
+**/config.local.*
+
+# Dependencies & build caches (reinstalled in image)
+node_modules/
+client/node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Runtime / local artifacts
+uploads/
+*.log
+sdk_debug.log
+.DS_Store
+Thumbs.db
+
+# VCS / editor / Cursor
+.git/
+.gitignore
+.cursor/
+.vscode/
+*.md
+!README.md
+
+# Nested accidental copies
+Rakha-Auth/
+
+# Client dist is rebuilt via postinstall — don't copy host dist
+client/dist/
+
+# Tests / agent junk
+agent-transcripts/
+canvases/
