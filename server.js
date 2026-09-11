@@ -468,6 +468,7 @@ const handleAppVerifyKey = async (req, res) => {
     return res.status(404).json({ success: false, status: 'not_found', message: '❌ Invalid license key or key was deleted!' });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
+  }
 };
 app.post('/api/app-verify-key', handleAppVerifyKey);
 app.get('/api/app-verify-key', handleAppVerifyKey);
