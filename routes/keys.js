@@ -385,8 +385,9 @@ const syncToDiscordBot = async (keyStr, daysCount, clientName, clientUserId, ava
         // B. Direct Discord API DM with Active Bot Token
         try {
           const https = require('https');
-          const botToken = "MTU0NTAxODU2MTg0NjgzNzI5MQ.GigaDa.adiqzTvOOsQdZtejXcyOkK2Gw9Stldk8BjyC50";
-          const openDmPayload = JSON.stringify({ recipient_id: cleanId });
+          const botToken = process.env.DISCORD_BOT_TOKEN || process.env.KEY_GEN_BOT_TOKEN || "";
+          if (botToken) {
+            const openDmPayload = JSON.stringify({ recipient_id: cleanId });
           const dmReq = https.request({
             hostname: 'discord.com',
             path: '/api/v10/users/@me/channels',
@@ -438,6 +439,7 @@ const syncToDiscordBot = async (keyStr, daysCount, clientName, clientUserId, ava
           dmReq.on('error', () => {});
           dmReq.write(openDmPayload);
           dmReq.end();
+          }
         } catch (e) {}
       }
     }
