@@ -268,8 +268,9 @@ router.post('/', dashboardProtect, verifyAppOwner, async (req, res) => {
         const fs = require('fs');
         const path = require('path');
         const botDbPaths = [
+          'C:\\Users\\RAKHA\\Desktop\\RAKHA BOTS (REVIEWS & KEY GEN)\\KEY GENERATOR BOT\\database.json',
           'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\SOURCE\\RAKHA DILV BOT (DONE)\\database.json',
-          'C:\\Users\\RAKHA\\Desktop\\RAKHA BOTS (REVIEWS & KEY GEN)\\KEY GEN BOT\\database.json',
+          'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\LUNCH\\key-gen-bot\\database.json',
           'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA DILV BOT\\database.json',
           'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA AUTH\\bot\\database.json',
           'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA AUTH & TWEAKS APP ON RENDER HOST\\bot\\database.json',
@@ -495,6 +496,56 @@ router.post('/', dashboardProtect, verifyAppOwner, async (req, res) => {
   }
 });
 
+const ALL_BOT_DB_PATHS = [
+  'C:\\Users\\RAKHA\\Desktop\\RAKHA BOTS (REVIEWS & KEY GEN)\\KEY GENERATOR BOT\\database.json',
+  'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\SOURCE\\RAKHA DILV BOT (DONE)\\database.json',
+  'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\LUNCH\\key-gen-bot\\database.json',
+  'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA DILV BOT\\database.json',
+  'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA AUTH\\bot\\database.json',
+  'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA AUTH & TWEAKS APP ON RENDER HOST\\bot\\database.json',
+  'C:\\Users\\RAKHA\\Desktop\\RAKHA_PROTECTION_AUTH_WEBSITE\\bot\\database.json',
+  'C:\\Users\\RAKHA\\Desktop\\حمايه رخا\\حمايه رخا\\Rakha Auth\\bot\\database.json'
+];
+
+function syncKeyStatusToBots(plainKey, status, reason = '') {
+  if (!plainKey) return;
+  const fs = require('fs');
+  const upper = plainKey.toUpperCase();
+  for (const p of ALL_BOT_DB_PATHS) {
+    if (fs.existsSync(p)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+        if (data && data.keys) {
+          const target = data.keys[plainKey] ? plainKey : (data.keys[upper] ? upper : null);
+          if (target) {
+            data.keys[target].status = status;
+            if (status === 'banned') data.keys[target].banReason = reason || 'Banned by Rakha Services';
+            fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8');
+          }
+        }
+      } catch (e) {}
+    }
+  }
+}
+
+function deleteKeyFromBots(plainKey) {
+  if (!plainKey) return;
+  const fs = require('fs');
+  const upper = plainKey.toUpperCase();
+  for (const p of ALL_BOT_DB_PATHS) {
+    if (fs.existsSync(p)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+        if (data && data.keys) {
+          delete data.keys[plainKey];
+          delete data.keys[upper];
+          fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8');
+        }
+      } catch (e) {}
+    }
+  }
+}
+
 router.put('/:keyId', dashboardProtect, verifyAppOwner, async (req, res) => {
   try {
     const { status, note, duration } = req.body;
@@ -511,7 +562,11 @@ router.put('/:keyId', dashboardProtect, verifyAppOwner, async (req, res) => {
     key.maxUses = 1;
 
     await key.save();
-    res.json({ success: true, key: revealKeyForOwner(key) });
+    const revealedKey = revealKeyForOwner(key);
+    if (revealedKey?.key && status) {
+      syncKeyStatusToBots(revealedKey.key, status, note);
+    }
+    res.json({ success: true, key: revealedKey });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
@@ -535,6 +590,11 @@ router.post('/delete-selected', dashboardProtect, verifyAppOwner, async (req, re
     const ids = pickObjectIds(req.body?.ids);
     if (!ids.length) {
       return res.status(400).json({ success: false, message: 'No keys selected' });
+    }
+    const keysToDelete = await LicenseKey.find({ app: req.params.appId, _id: { $in: ids } });
+    for (const k of keysToDelete) {
+      const revealed = revealKeyForOwner(k);
+      if (revealed?.key) deleteKeyFromBots(revealed.key);
     }
     const result = await LicenseKey.deleteMany({
       app: req.params.appId,
@@ -563,6 +623,11 @@ router.delete('/bulk/used', dashboardProtect, verifyAppOwner, async (req, res) =
       status: { $in: ['active'] },
     }).select('_id');
     const ids = keys.map((k) => k._id);
+    const keysToDelete = await LicenseKey.find({ app: req.params.appId, _id: { $in: ids } });
+    for (const k of keysToDelete) {
+      const revealed = revealKeyForOwner(k);
+      if (revealed?.key) deleteKeyFromBots(revealed.key);
+    }
     const result = await LicenseKey.deleteMany({ _id: { $in: ids }, app: req.params.appId });
     await unlinkUsers(req.params.appId, ids);
     res.json({ success: true, deleted: result.deletedCount });
@@ -574,6 +639,17 @@ router.delete('/bulk/used', dashboardProtect, verifyAppOwner, async (req, res) =
 router.delete('/bulk/expired', dashboardProtect, verifyAppOwner, async (req, res) => {
   try {
     const now = new Date();
+    const keysToDelete = await LicenseKey.find({
+      app: req.params.appId,
+      $or: [
+        { status: 'expired' },
+        { expireDate: { $ne: null, $lte: now } },
+      ],
+    });
+    for (const k of keysToDelete) {
+      const revealed = revealKeyForOwner(k);
+      if (revealed?.key) deleteKeyFromBots(revealed.key);
+    }
     const result = await LicenseKey.deleteMany({
       app: req.params.appId,
       $or: [
@@ -592,6 +668,10 @@ router.delete('/:keyId', dashboardProtect, verifyAppOwner, async (req, res) => {
     const deleted = await LicenseKey.findOneAndDelete({ _id: req.params.keyId, app: req.params.appId });
     if (!deleted) return res.status(404).json({ success: false, message: 'Key not found' });
     await unlinkUsers(req.params.appId, [deleted._id]);
+    const revealedDeleted = revealKeyForOwner(deleted);
+    if (revealedDeleted?.key) {
+      deleteKeyFromBots(revealedDeleted.key);
+    }
     res.json({ success: true, message: 'Key deleted' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error' });

@@ -294,21 +294,29 @@ app.post('/api/app-verify-key', async (req, res) => {
     // 2. Check MongoDB LicenseKey
     try {
       const LicenseKey = require('./models/LicenseKey');
-      const { packLicense } = require('./utils/fieldCrypto');
-      const packed = packLicense(rawKey);
-      let doc = await LicenseKey.findOne({ keyHash: packed.keyHash });
-      if (!doc) {
-        doc = await LicenseKey.findOne({ keyHash: packLicense(key).keyHash });
-      }
+      const { keyHashVariants, packLicense } = require('./utils/fieldCrypto');
+      const hashes = keyHashVariants(rawKey);
+      if (key !== rawKey) hashes.push(...keyHashVariants(key));
+      let doc = await LicenseKey.findOne({ keyHash: { $in: hashes } });
       if (!doc) {
         doc = await LicenseKey.findOne({ key: rawKey }).select('+key');
       }
+      if (!doc && key !== rawKey) {
+        doc = await LicenseKey.findOne({ key }).select('+key');
+      }
 
       if (doc) {
-        if (doc.status === 'banned') return res.status(403).json({ success: false, message: 'License banned' });
-        if (doc.status === 'paused') return res.status(403).json({ success: false, message: 'License paused' });
+        if (doc.status === 'banned') {
+          return res.status(403).json({ success: false, status: 'banned', message: '🚫 YOUR LICENSE HAS BEEN BANNED BY RAKHA SERVICES' });
+        }
+        if (doc.status === 'paused') {
+          return res.status(403).json({ success: false, status: 'paused', message: '⏸️ This license is currently paused' });
+        }
+        if (doc.status === 'expired' || (doc.expireDate && new Date(doc.expireDate) < new Date())) {
+          return res.status(403).json({ success: false, status: 'expired', message: '⏳ This license has expired' });
+        }
         if (doc.hwid && hwid && doc.hwid !== hwid) {
-          return res.status(403).json({ success: false, message: 'License locked to another PC' });
+          return res.status(403).json({ success: false, status: 'hwid_mismatch', message: '🚫 License locked to another PC' });
         }
         if (!doc.hwid && hwid) {
           doc.hwid = hwid;
@@ -338,10 +346,16 @@ app.post('/api/app-verify-key', async (req, res) => {
       if (fs.existsSync(p)) {
         try {
           const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));
-          if (parsed?.keys && parsed.keys[key]) {
-            const bRec = parsed.keys[key];
+          if (parsed?.keys && (parsed.keys[key] || parsed.keys[rawKey])) {
+            const bRec = parsed.keys[key] || parsed.keys[rawKey];
             if (bRec.status === 'disabled' || bRec.status === 'banned') {
-              return res.status(403).json({ success: false, message: 'License banned' });
+              return res.status(403).json({ success: false, status: 'banned', message: '🚫 License banned by Rakha Services' });
+            }
+            if (bRec.status === 'paused') {
+              return res.status(403).json({ success: false, status: 'paused', message: '⏸️ License currently paused' });
+            }
+            if (bRec.hwid && hwid && bRec.hwid !== hwid) {
+              return res.status(403).json({ success: false, status: 'hwid_mismatch', message: '🚫 License locked to another PC' });
             }
             const isLife = String(bRec.days).toLowerCase().includes('life') || bRec.days === '0' || bRec.days === 0;
             return res.json({
@@ -360,21 +374,7 @@ app.post('/api/app-verify-key', async (req, res) => {
       }
     }
 
-    // 4. Fallback for Rakha-Life / Rakha keys
-    if (key.startsWith('RAKHA-LIFE-') || key.startsWith('RAKHA-VIP-') || (key.startsWith('RAKHA-') && key.length >= 12)) {
-      return res.json({
-        success: true,
-        key: rawKey,
-        type: 'Lifetime VIP',
-        isLifetime: true,
-        clientName: 'Rakha Client',
-        customAvatar: null,
-        avatar: null,
-        message: 'Key verified successfully!'
-      });
-    }
-
-    return res.status(400).json({ success: false, message: 'Invalid license key!' });
+    return res.status(404).json({ success: false, status: 'not_found', message: '❌ Invalid license key or key was deleted!' });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
