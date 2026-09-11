@@ -931,7 +931,9 @@ apiApp.post('/api/verify-license', async (req, res) => {
 
   const record = db.keys[key.trim().toUpperCase()];
   if (!record) return res.json({ success: false, message: 'مفتاح الترخيص غير صالح.' });
-  if (record.status === 'disabled') return res.json({ success: false, message: 'تم تعطيل هذا المفتاح من قبل الإدارة.' });
+  if (record.status === 'disabled' || record.status === 'banned') {
+    return res.json({ success: false, message: 'تم حظر وتعطيل هذا المفتاح من قبل الإدارة.' });
+  }
   if (record.status === 'paused') return res.json({ success: false, message: `هذا المفتاح متوقف مؤقتاً (${record.pausedDuration || 'صيانة'}).` });
 
   if (!record.hwid && hwid) {

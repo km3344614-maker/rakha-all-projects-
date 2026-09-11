@@ -128,27 +128,29 @@ app.use((req, _res, next) => {
   next();
 });
 
-const sdkClientPath = (path = '') => {
-  const p = String(path || '');
+const sdkClientPath = (req) => {
+  const p = String(req?.path || '');
+  const orig = String(req?.originalUrl || '');
   return p === '/q' || p === '/d'
-    || p.startsWith('/sdk')
+    || p.startsWith('/sdk') || orig.includes('/sdk')
     || p === '/handshake' || p === '/verify'
-    || p.startsWith('/bot')
-    || p.startsWith('/local-')
-    || p.startsWith('/app-verify-key')
-    || p.startsWith('/submit-review')
-    || p.startsWith('/sync-bot-key')
-    || p.startsWith('/all-keys')
-    || p.startsWith('/health');
+    || p.startsWith('/bot') || orig.includes('/bot')
+    || p.startsWith('/local-') || orig.includes('/local-')
+    || p.startsWith('/app-verify-key') || orig.includes('/app-verify-key')
+    || p.startsWith('/submit-review') || orig.includes('/submit-review')
+    || p.startsWith('/sync-bot-key') || orig.includes('/sync-bot-key')
+    || p.startsWith('/all-keys') || orig.includes('/all-keys')
+    || p.startsWith('/health') || orig.includes('/health');
 };
 
 app.use('/api', (req, res, next) => {
-  if (sdkClientPath(req.path)) return next();
+  if (sdkClientPath(req)) return next();
   if (
     process.env.NODE_ENV === 'production'
     && !req.headers.origin
     && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
     && req.path !== '/health'
+    && !req.path.startsWith('/health')
   ) {
     return res.status(403).json({ success: false, message: 'Origin required' });
   }
@@ -238,9 +240,13 @@ const botLimiter = rateLimit({
   message: { success: false, message: 'Too many bot requests' }
 });
 
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 app.get('/api/health', (req, res) => {
   const ok = mongoose.connection.readyState === 1;
-  res.json({ ok: true, mongo: ok, mode: ok ? 'cluster' : 'standalone' });
+  res.status(200).json({ ok: true, mongo: ok, mode: ok ? 'cluster' : 'standalone' });
 });
 
 app.use('/api/', limiter);
@@ -278,11 +284,11 @@ const ALL_BOT_DB_PATHS = [
   'C:\\Users\\RAKHA\\Desktop\\حمايه رخا\\حمايه رخا\\Rakha Auth\\bot\\database.json'
 ];
 
-app.post('/api/app-verify-key', async (req, res) => {
+const handleAppVerifyKey = async (req, res) => {
   try {
-    const rawKey = String(req.body?.key || '').trim();
+    const rawKey = String((req.method === 'POST' ? req.body?.key : req.query?.key) || '').trim();
     const key = rawKey.toUpperCase();
-    const hwid = String(req.body?.hwid || '').trim();
+    const hwid = String((req.method === 'POST' ? req.body?.hwid : req.query?.hwid) || '').trim();
     if (!rawKey) return res.status(400).json({ success: false, message: 'Key is required' });
 
     // 1. Admin VIP keys
@@ -462,8 +468,9 @@ app.post('/api/app-verify-key', async (req, res) => {
     return res.status(404).json({ success: false, status: 'not_found', message: '❌ Invalid license key or key was deleted!' });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
-  }
-});
+};
+app.post('/api/app-verify-key', handleAppVerifyKey);
+app.get('/api/app-verify-key', handleAppVerifyKey);
 
 // Sync bot key to Render persistent storage
 app.post('/api/sync-bot-key', (req, res) => {

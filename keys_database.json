@@ -1,0 +1,25 @@
+{
+  "keys": {
+    "RAKHA-LIFE-S7CE-FTF0": {
+      "key": "RAKHA-LIFE-S7CE-FTF0",
+      "name": "Rakha VIP Client",
+      "days": "lifetime",
+      "status": "active",
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    },
+    "RAKHA-LIFE-BXLM-HRHW": {
+      "key": "RAKHA-LIFE-BXLM-HRHW",
+      "name": "Rakha VIP Client",
+      "days": "lifetime",
+      "status": "active",
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    },
+    "RAKHA-VIP-PRO-2026": {
+      "key": "RAKHA-VIP-PRO-2026",
+      "name": "Rakha Owner / VIP",
+      "days": "lifetime",
+      "status": "active",
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    }
+  }
+}

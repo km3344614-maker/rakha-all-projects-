@@ -705,6 +705,16 @@ router.post('/delete-selected', dashboardProtect, verifyAppOwner, async (req, re
 
 router.delete('/bulk/unused', dashboardProtect, verifyAppOwner, async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1 || req.params.appId === 'app_rakha_v3') {
+      const all = standaloneKeys.getAllKeys();
+      const targets = all.filter(k => k.status === 'unused');
+      targets.forEach(k => {
+        standaloneKeys.deleteKey(k.key);
+        deleteKeyFromBots(k.key);
+      });
+      return res.json({ success: true, deleted: targets.length });
+    }
+
     const result = await LicenseKey.deleteMany({ app: req.params.appId, status: 'unused' });
     res.json({ success: true, deleted: result.deletedCount });
   } catch (error) {
@@ -714,6 +724,16 @@ router.delete('/bulk/unused', dashboardProtect, verifyAppOwner, async (req, res)
 
 router.delete('/bulk/used', dashboardProtect, verifyAppOwner, async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1 || req.params.appId === 'app_rakha_v3') {
+      const all = standaloneKeys.getAllKeys();
+      const targets = all.filter(k => k.status === 'active' || k.hwid);
+      targets.forEach(k => {
+        standaloneKeys.deleteKey(k.key);
+        deleteKeyFromBots(k.key);
+      });
+      return res.json({ success: true, deleted: targets.length });
+    }
+
     const keys = await LicenseKey.find({
       app: req.params.appId,
       status: { $in: ['active'] },
@@ -734,6 +754,16 @@ router.delete('/bulk/used', dashboardProtect, verifyAppOwner, async (req, res) =
 
 router.delete('/bulk/expired', dashboardProtect, verifyAppOwner, async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1 || req.params.appId === 'app_rakha_v3') {
+      const all = standaloneKeys.getAllKeys();
+      const targets = all.filter(k => k.status === 'expired');
+      targets.forEach(k => {
+        standaloneKeys.deleteKey(k.key);
+        deleteKeyFromBots(k.key);
+      });
+      return res.json({ success: true, deleted: targets.length });
+    }
+
     const now = new Date();
     const keysToDelete = await LicenseKey.find({
       app: req.params.appId,
