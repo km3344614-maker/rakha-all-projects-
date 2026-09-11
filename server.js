@@ -261,11 +261,15 @@ const hideNamedSdkRoutes = () => process.env.ALLOW_LEGACY_SDK === 'false';
 
 // Local disk database endpoints for bot & dashboard synchronization
 const ALL_BOT_DB_PATHS = [
+  'G:\\V2\\SYSTEM & TICKET & REVIEWS & DILV\\RAKHA BOTS (REVIEWS & KEY GEN)\\BOTH\\database.json',
+  'C:\\Users\\RAKHA\\Desktop\\RAKHA BOTS (REVIEWS & KEY GEN)\\BOTH\\database.json',
+  'C:\\Users\\RAKHA\\Desktop\\RAKHA BOTS (REVIEWS & KEY GEN)\\KEY GENERATOR BOT\\database.json',
+  'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\LUNCH\\key-gen-bot\\database.json',
   'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\SOURCE\\RAKHA DILV BOT (DONE)\\database.json',
-  'C:\\Users\\RAKHA\\Desktop\\RAKHA BOTS (REVIEWS & KEY GEN)\\KEY GEN BOT\\database.json',
   'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA DILV BOT\\database.json',
   'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA AUTH\\bot\\database.json',
   'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA AUTH & TWEAKS APP ON RENDER HOST\\bot\\database.json',
+  path.resolve(__dirname, 'key-gen-bot/database.json'),
   path.resolve(__dirname, 'bot/database.json'),
   'C:\\Users\\RAKHA\\Desktop\\حمايه رخا\\حمايه رخا\\Rakha Auth\\bot\\database.json'
 ];
@@ -686,7 +690,7 @@ app.get('/api/tweaks/file/*', (req, res) => {
   res.sendFile(targetPath);
 });
 
-// Direct Review Submission via Reviews Bot
+// Direct Review Submission via 509 Unified Reviews Bot
 app.post('/api/submit-review', async (req, res) => {
   try {
     const { key, user, rating, reviewText, avatar } = req.body || {};
@@ -695,43 +699,46 @@ app.post('/api/submit-review', async (req, res) => {
     }
 
     const https = require('https');
-    const reviewChId = '1532195725688180857';
-    const reviewsBotToken = "MTU0NzY4OTQxMTg1NDk5MTM3Mg.GuUcAH.hff10DLvfkqxzDnW0AKpleO1JCfqeZe-48x9IQ";
     const userAvatar = (avatar && String(avatar).startsWith('http'))
       ? avatar
       : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png';
-    const stars = '⭐'.repeat(Math.max(1, Math.min(5, parseInt(rating) || 5)));
 
-    const embed = {
-      author: { name: user || 'Verified Customer', icon_url: userAvatar },
-      title: '🌟 تقييم ورأي جديد // NEW CLIENT REVIEW',
-      description: `💬 **نص التقييم:**\n\`\`\`\n${reviewText.trim()}\n\`\`\`\n` +
-        `• **التقييم**: ${stars} (${rating || 5}/5)\n` +
-        `• **العميل**: **${user || 'عميل RAKHA'}**\n` +
-        `• **التاريخ**: <t:${Math.floor(Date.now() / 1000)}:F>`,
-      thumbnail: { url: userAvatar },
-      color: 0x00FF88,
-      footer: { text: 'RAKHA REVIEWS • Verified Feedback System', icon_url: userAvatar },
-      timestamp: new Date().toISOString()
-    };
+    const payload = JSON.stringify({
+      key: key || 'CLIENT-WEB',
+      user: user || 'عميل RAKHA',
+      avatar: userAvatar,
+      rating: rating || 5,
+      reviewText: reviewText.trim()
+    });
 
-    const msgData = JSON.stringify({ embeds: [embed] });
     const postReq = https.request({
-      hostname: 'discord.com',
-      path: `/api/v10/channels/${reviewChId}/messages`,
+      hostname: 'rakha-key-gen-bot.509.rip',
+      path: '/api/submit-review',
       method: 'POST',
       headers: {
-        'Authorization': `Bot ${reviewsBotToken}`,
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(msgData),
-        'User-Agent': 'RakhaReviewsBot (https://rakha.me, 1.0.0)'
-      }
+        'Content-Length': Buffer.byteLength(payload)
+      },
+      timeout: 5000
+    }, (botRes) => {
+      let buf = '';
+      botRes.on('data', c => buf += c);
+      botRes.on('end', () => {
+        try {
+          const data = JSON.parse(buf);
+          return res.json(data);
+        } catch {
+          return res.json({ success: true, message: 'Review forwarded to bot successfully!' });
+        }
+      });
     });
-    postReq.on('error', (err) => console.warn('Reviews bot post error:', err.message));
-    postReq.write(msgData);
-    postReq.end();
 
-    res.json({ success: true, message: 'Review sent directly via Reviews Bot!' });
+    postReq.on('error', (err) => {
+      console.warn('Bot forward error:', err.message);
+      return res.json({ success: true, message: 'Review received!' });
+    });
+    postReq.write(payload);
+    postReq.end();
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
