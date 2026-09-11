@@ -17,11 +17,22 @@ const {
 } = require('../utils/security');
 
 const sameOrigin = (req, res, next) => {
-  if (!assertDashboardOrigin(req)) {
-    console.warn(`[SECURITY] Origin denied: ${req.method} ${req.originalUrl} origin=${req.headers.origin || '-'}`);
-    return res.status(403).json({ success: false, message: 'Origin denied' });
+  const host = String(req.headers.host || '').toLowerCase();
+  const origin = String(req.headers.origin || '').toLowerCase();
+  const referer = String(req.headers.referer || '').toLowerCase();
+  if (
+    host.includes('rakha.me') ||
+    host.includes('onrender.com') ||
+    origin.includes('rakha.me') ||
+    origin.includes('onrender.com') ||
+    referer.includes('rakha.me') ||
+    referer.includes('onrender.com') ||
+    assertDashboardOrigin(req)
+  ) {
+    return next();
   }
-  next();
+  console.warn(`[SECURITY] Origin denied: ${req.method} ${req.originalUrl} origin=${req.headers.origin || '-'}`);
+  return res.status(403).json({ success: false, message: 'Origin denied' });
 };
 
 const { getStandaloneSession } = require('../utils/standaloneSession');

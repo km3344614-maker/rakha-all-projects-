@@ -102,16 +102,15 @@ router.post('/login', sameOrigin, async (req, res) => {
     const username = asSafeString(body.username, 60);
     const password = typeof body.password === 'string' ? body.password : '';
 
-    // Check offline/standalone local admin credentials first or if MongoDB is disconnected
+    // Check offline/standalone local admin credentials first
+    const standaloneUser = verifyStandaloneLogin(username, password);
+    if (standaloneUser) {
+      console.log(`[AUTH] Admin login success: ${standaloneUser.username}`);
+      const sessionResult = createStandaloneSession(standaloneUser, req, res);
+      return res.json(sessionResult);
+    }
+
     if (mongoose.connection.readyState !== 1) {
-      console.log(`[AUTH-DEBUG] Attempting login: username='${username}' mongoose.readyState=${mongoose.connection.readyState}`);
-      const standaloneUser = verifyStandaloneLogin(username, password);
-      if (standaloneUser) {
-        console.log(`[AUTH-DEBUG] Login success for standaloneUser: ${standaloneUser.username}`);
-        const sessionResult = createStandaloneSession(standaloneUser, req, res);
-        return res.json(sessionResult);
-      }
-      console.log(`[AUTH-DEBUG] verifyStandaloneLogin returned null`);
       return denyAccess(res);
     }
 
