@@ -240,8 +240,7 @@ const botLimiter = rateLimit({
 
 app.get('/api/health', (req, res) => {
   const ok = mongoose.connection.readyState === 1;
-  if (!ok) return res.status(503).json({ ok: false });
-  res.json({ ok: true });
+  res.json({ ok: true, mongo: ok, mode: ok ? 'cluster' : 'standalone' });
 });
 
 app.use('/api/', limiter);
