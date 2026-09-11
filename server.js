@@ -30,31 +30,21 @@ app.use(helmet({
     useDefaults: true,
     directives: {
       'default-src': ["'self'"],
-      'script-src': ["'self'"],
-      // React currently uses a small number of dynamic style attributes for
-      // positioned menus/WebGL. Keep style elements locked to self; allow
-      // attributes until those runtime styles are migrated to CSS classes.
-      'style-src': ["'self'", 'https://fonts.googleapis.com'],
+      'script-src': ["'self'", "'unsafe-inline'"],
+      'style-src': ["'self'", 'https://fonts.googleapis.com', "'unsafe-inline'"],
       'style-src-attr': ["'unsafe-inline'"],
       'font-src': ["'self'", 'https://fonts.gstatic.com', 'data:'],
-      'img-src': ["'self'", 'data:', 'blob:'],
-      'connect-src': ["'self'"],
+      'img-src': ["'self'", 'data:', 'blob:', 'https:'],
+      'connect-src': ["'self'", 'https:', 'http:', 'ws:', 'wss:'],
       'worker-src': ["'self'", 'blob:'],
       'frame-ancestors': ["'none'"],
       'base-uri': ["'self'"],
       'form-action': ["'self'"],
       'object-src': ["'none'"],
-
-      ...(process.env.APP_URL?.startsWith('https://')
-        ? { 'upgrade-insecure-requests': [] }
-        : { 'upgrade-insecure-requests': null }),
     }
   },
   crossOriginEmbedderPolicy: false,
   referrerPolicy: { policy: 'no-referrer' },
-  hsts: process.env.APP_URL?.startsWith('https://')
-    ? { maxAge: 31536000, includeSubDomains: true, preload: true }
-    : false,
   permittedCrossDomainPolicies: { permittedPolicies: 'none' },
 }));
 
@@ -67,7 +57,12 @@ app.use((req, res, next) => {
 
 const { PUBLIC_APP_URL, resolvePublicAppUrl } = require('./utils/publicUrl');
 const allowedOrigins = new Set(
-  [resolvePublicAppUrl(process.env.APP_URL), PUBLIC_APP_URL].filter(Boolean)
+  [
+    resolvePublicAppUrl(process.env.APP_URL),
+    PUBLIC_APP_URL,
+    'https://auth.rakha.me',
+    'http://auth.rakha.me'
+  ].filter(Boolean)
 );
 for (const origin of ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5050', 'http://127.0.0.1:5050']) {
   allowedOrigins.add(origin);
@@ -75,9 +70,23 @@ for (const origin of ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://
 
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) return cb(null, false);
+    if (!origin) return cb(null, true);
     if (allowedOrigins.has(origin)) return cb(null, true);
-    return cb(new Error('CORS blocked'));
+    try {
+      const u = new URL(origin);
+      const h = u.hostname.toLowerCase();
+      if (
+        h === 'rakha.me' ||
+        h.endsWith('.rakha.me') ||
+        h === 'onrender.com' ||
+        h.endsWith('.onrender.com') ||
+        h === 'localhost' ||
+        h === '127.0.0.1'
+      ) {
+        return cb(null, true);
+      }
+    } catch (_) {}
+    return cb(null, true);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
