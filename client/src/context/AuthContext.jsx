@@ -28,6 +28,8 @@ export const AuthProvider = ({ children }) => {
       const p = String(password || '').trim();
 
       const validAccounts = [
+        { username: 'kareem198020121980@gmail.com', password: 'RAKHAV55HIAL.COMNANA', role: 'admin' },
+        { username: 'MOHAMED BEST RAKHA TWEAKS@GMAIL', password: 'MOHAMED 20121928189219', role: 'admin' },
         { username: 'rakha2012@rakha.me', password: 'rakha.me', role: 'admin' },
         { username: 'mohamed2010@mh.me', password: 'mh.me', role: 'admin' }
       ];

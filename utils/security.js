@@ -333,23 +333,41 @@ const assertDashboardOrigin = (req) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return true;
   const origin = String(req.headers.origin || '').replace(/\/$/, '');
   const referer = String(req.headers.referer || '');
+  const hostHeader = String(req.headers.host || '').toLowerCase();
   const allowed = new Set(
-    [process.env.APP_URL, process.env.RENDER_EXTERNAL_URL]
+    [
+      process.env.APP_URL,
+      process.env.RENDER_EXTERNAL_URL,
+      'https://auth.rakha.me',
+      'http://auth.rakha.me'
+    ]
       .map((v) => String(v || '').trim().replace(/\/$/, ''))
       .filter((v) => v.startsWith('https://') || v.startsWith('http://'))
   );
-  if (!allowed.size) {
-    return process.env.NODE_ENV !== 'production';
-  }
   if (origin && allowed.has(origin)) return true;
-  if (process.env.NODE_ENV !== 'production'
-    && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(origin)) {
-    return true;
-  }
+  try {
+    const target = origin || referer;
+    if (target) {
+      const u = new URL(target);
+      const h = u.hostname.toLowerCase();
+      if (
+        h === 'rakha.me' ||
+        h.endsWith('.rakha.me') ||
+        h === 'onrender.com' ||
+        h.endsWith('.onrender.com') ||
+        h === 'localhost' ||
+        h === '127.0.0.1' ||
+        h === hostHeader ||
+        hostHeader.startsWith(h)
+      ) {
+        return true;
+      }
+    }
+  } catch (_) {}
   for (const a of allowed) {
     if (referer === a || referer.startsWith(`${a}/`)) return true;
   }
-  if (process.env.NODE_ENV !== 'production' && !origin && !referer) return true;
+  if (!origin && !referer) return true;
   return false;
 };
 
