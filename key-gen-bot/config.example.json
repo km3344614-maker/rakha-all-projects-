@@ -1,0 +1,15 @@
+{
+    "token": "YOUR_DISCORD_BOT_TOKEN",
+    "api_url": "",
+    "bot_secret": "YOUR_BOT_SECRET",
+    "app_id": "YOUR_APP_ID",
+    "admin_roles": ["Admin", "Manager"],
+    "ticket_category_id": 0,
+    "welcome_channel_id": 0,
+    "logs_channel_id": 0,
+    "voice_channel_id": 0,
+    "probot_features": {
+        "welcome_msg": "Welcome {user} to the server!",
+        "level_up_msg": "Congrats {user}, you reached level {level}!"
+    }
+}

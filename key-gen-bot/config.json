@@ -1,0 +1,14 @@
+{
+  "botToken": "MTU0NTAxODU2MTg0NjgzNzI5MQ.GukYF1._3ZSdFDDzuYv7M_LLHTqSTx5PaOY4dRLipIxHI",
+  "clientId": "1545018561846837291",
+  "logWebhook": "https://discord.com/api/webhooks/1545060653906272306/kTZPuXrOxjA8VlKxlBzcs11lQULN4KmrB78W3Q5IEcWBmRelBpMNBkrH9gSsmrdmxXgs",
+  "channels": {
+    "generate": "1545060611740668046",
+    "enable": "1545062252359716924",
+    "disable": "1545062136311586826",
+    "stop": "1545062281090564206",
+    "logs": "1545062072688189540",
+    "reviews": "1532195725688180857"
+  },
+  "apiPort": 3000
+}
