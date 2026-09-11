@@ -1,15 +1,16 @@
 {
-    "token": "YOUR_DISCORD_BOT_TOKEN",
-    "api_url": "",
-    "bot_secret": "YOUR_BOT_SECRET",
-    "app_id": "YOUR_APP_ID",
-    "admin_roles": ["Admin", "Manager"],
-    "ticket_category_id": 0,
-    "welcome_channel_id": 0,
-    "logs_channel_id": 0,
-    "voice_channel_id": 0,
-    "probot_features": {
-        "welcome_msg": "Welcome {user} to the server!",
-        "level_up_msg": "Congrats {user}, you reached level {level}!"
-    }
+  "botToken": "YOUR_KEY_GEN_BOT_TOKEN",
+  "reviewsBotToken": "OPTIONAL_SEPARATE_REVIEWS_BOT_TOKEN",
+  "clientId": "1545018561846837291",
+  "reviewsClientId": "1547689411854991372",
+  "logWebhook": "https://discord.com/api/webhooks/...",
+  "channels": {
+    "generate": "1545060611740668046",
+    "enable": "1545062252359716924",
+    "disable": "1545062136311586826",
+    "stop": "1545062281090564206",
+    "logs": "1545062072688189540",
+    "reviews": "1532195725688180857"
+  },
+  "apiPort": 3000
 }

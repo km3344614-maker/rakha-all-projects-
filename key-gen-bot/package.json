@@ -1,7 +1,7 @@
 {
-  "name": "rakha-key-gen-bot",
+  "name": "rakha-bots-unified",
   "version": "1.0.0",
-  "description": "RAKHA KEY GEN - Discord License Management Bot",
+  "description": "RAKHA UNIFIED BOT - License Key Generator & Reviews System",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"

@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router({ mergeParams: true });
+const mongoose = require('mongoose');
 const LicenseKey = require('../models/LicenseKey');
 const AppUser = require('../models/AppUser');
+const standaloneKeys = require('../utils/standaloneKeys');
 const { dashboardProtect } = require('../middleware/auth');
 const { verifyAppOwner } = require('../middleware/verifyAppOwner');
 const { generateLicenseKey, generateFromMask, generateBulkKeys } = require('../utils/keyGenerator');
@@ -69,6 +71,33 @@ const mapRepairedKeys = async (appId, rows, usageIndex) => {
 
 router.get('/', dashboardProtect, verifyAppOwner, async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1 || req.params.appId === 'app_rakha_v3') {
+      const all = standaloneKeys.getAllKeys();
+      const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25));
+      const search = (req.query.search || '').trim().toLowerCase();
+      let filtered = all;
+      if (search) {
+        filtered = all.filter(k => (k.key || '').toLowerCase().includes(search) || (k.name || '').toLowerCase().includes(search) || (k.userId || '').includes(search));
+      }
+      const total = filtered.length;
+      const paginated = filtered.slice((page - 1) * limit, page * limit);
+      return res.json({
+        success: true,
+        keys: paginated,
+        total,
+        page,
+        pages: Math.ceil(total / limit) || 1,
+        generators: ['Dashboard', 'Admin'],
+        counts: {
+          unused: all.filter(k => k.status === 'unused').length,
+          used: all.filter(k => k.status === 'active').length,
+          expired: all.filter(k => k.status === 'expired').length,
+          all: total
+        }
+      });
+    }
+
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25));
     const { status, search, createdBy } = req.query;
@@ -237,6 +266,186 @@ router.get('/:keyId/details', dashboardProtect, verifyAppOwner, async (req, res)
   }
 });
 
+const syncToDiscordBot = async (keyStr, daysCount, clientName, clientUserId, avatarUrl, createdBy = 'Dashboard') => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const isLifetime = String(daysCount).toLowerCase().includes('life') || daysCount === 0 || daysCount === '0';
+    const finalDays = isLifetime ? 'lifetime' : String(daysCount);
+
+    // 1. Sync to local bot DBs if they exist
+    const botDbPaths = [
+      'C:\\Users\\RAKHA\\Desktop\\RAKHA BOTS (REVIEWS & KEY GEN)\\KEY GENERATOR BOT\\database.json',
+      'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\SOURCE\\RAKHA DILV BOT (DONE)\\database.json',
+      'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\LUNCH\\key-gen-bot\\database.json',
+      'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA DILV BOT\\database.json',
+      'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA AUTH\\bot\\database.json',
+      'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA AUTH & TWEAKS APP ON RENDER HOST\\bot\\database.json',
+      path.join(__dirname, '..', 'bot', 'database.json'),
+      'C:\\Users\\RAKHA\\Desktop\\حمايه رخا\\حمايه رخا\\Rakha Auth\\bot\\database.json'
+    ];
+    for (const dbPath of botDbPaths) {
+      if (fs.existsSync(dbPath)) {
+        let botDb = { keys: {} };
+        try {
+          botDb = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+        } catch (e) {
+          botDb = { keys: {} };
+        }
+        if (!botDb.keys) botDb.keys = {};
+        botDb.keys[keyStr] = {
+          key: keyStr,
+          name: clientName || 'Rakha Client',
+          days: finalDays,
+          userId: clientUserId || '',
+          customAvatar: avatarUrl || null,
+          status: 'active',
+          createdAt: new Date().toISOString(),
+          generatedBy: createdBy || 'Dashboard'
+        };
+        fs.writeFileSync(dbPath, JSON.stringify(botDb, null, 2), 'utf8');
+      }
+    }
+
+    // 2. Sync to 509 Cloud Bot
+    standaloneKeys.syncKeyTo509Bot({
+      key: keyStr,
+      name: clientName || 'Rakha Client',
+      clientName: clientName || 'Rakha Client',
+      days: finalDays,
+      userId: clientUserId || '',
+      customAvatar: avatarUrl || null,
+      status: 'active',
+      generatedBy: createdBy || 'Dashboard'
+    }).catch(() => {});
+
+    // 3. Send notification to Discord Webhook
+    const webhookUrl = 'https://discord.com/api/webhooks/1545060653906272306/kTZPuXrOxjA8VlKxlBzcs11lQULN4KmrB78W3Q5IEcWBmRelBpMNBkrH9gSsmrdmxXgs';
+    try {
+      const https = require('https');
+      const payload = JSON.stringify({
+        username: 'RAKHA KEY GEN // السجلات',
+        avatar_url: avatarUrl || 'https://cdn.discordapp.com/embed/avatars/0.png',
+        embeds: [{
+          title: '✅ تم توليد المفتاح من لوحة التحكم بنجاح!',
+          description: `🔑 **المفتاح**: \`${keyStr}\`\n` +
+            `👤 **العميل**: **${clientName || 'Rakha Client'}** ${clientUserId ? `(<@${clientUserId}>)` : ''}\n` +
+            `⏳ **المدة**: \`${isLifetime ? '♾️ Lifetime' : `${daysCount} يوم`}\`\n` +
+            `🛡️ **الحالة**: 🟢 **نشط (ACTIVE)**\n` +
+            `👮 **بواسطة**: **${createdBy || 'Admin'} (Web Dashboard)**`,
+          color: 0xFFFFFF,
+          thumbnail: avatarUrl ? { url: avatarUrl } : undefined,
+          footer: { text: 'RAKHA STORE • نظام التراخيص الرسمي' },
+          timestamp: new Date().toISOString()
+        }]
+      });
+      const urlObj = new URL(webhookUrl);
+      const reqObj = https.request({
+        hostname: urlObj.hostname,
+        path: urlObj.pathname + urlObj.search,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
+        }
+      });
+      reqObj.on('error', () => {});
+      reqObj.write(payload);
+      reqObj.end();
+    } catch (e) {}
+
+    // 4. Direct DM Delivery to User
+    if (clientUserId) {
+      const cleanId = String(clientUserId).replace(/[^0-9]/g, '');
+      if (cleanId.length >= 16) {
+        // A. Call 509 Cloud delivery endpoint
+        try {
+          const https = require('https');
+          const deliverPayload = JSON.stringify({
+            userId: cleanId,
+            key: keyStr,
+            days: finalDays,
+            clientName: clientName || 'Rakha Client'
+          });
+          const dReq = https.request({
+            hostname: 'rakha-bots-unified.509.rip',
+            path: '/api/deliver-key',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(deliverPayload)
+            },
+            timeout: 5000
+          });
+          dReq.on('error', () => {});
+          dReq.write(deliverPayload);
+          dReq.end();
+        } catch (e) {}
+
+        // B. Direct Discord API DM with Active Bot Token
+        try {
+          const https = require('https');
+          const botToken = "MTU0NTAxODU2MTg0NjgzNzI5MQ.GigaDa.adiqzTvOOsQdZtejXcyOkK2Gw9Stldk8BjyC50";
+          const openDmPayload = JSON.stringify({ recipient_id: cleanId });
+          const dmReq = https.request({
+            hostname: 'discord.com',
+            path: '/api/v10/users/@me/channels',
+            method: 'POST',
+            headers: {
+              'Authorization': `Bot ${botToken}`,
+              'Content-Type': 'application/json',
+              'User-Agent': 'RakhaKeyGenBot (https://rakha.me, 1.0.0)'
+            }
+          }, (dmRes) => {
+            let dmBuf = '';
+            dmRes.on('data', c => dmBuf += c);
+            dmRes.on('end', () => {
+              try {
+                const ch = JSON.parse(dmBuf);
+                if (ch && ch.id) {
+                  const dmMsg = JSON.stringify({
+                    embeds: [{
+                      title: '👑 RAKHA TWEAKS V3 • مفتاح التفعيل الخاص بك',
+                      description: `مرحباً بك يا **${clientName || 'عزيزنا العميل'}**!\nتم إصدار ترخيصك بنجاح من متجر رخا. استخدم هذا المفتاح لتفعيل البرنامج:\n\n` +
+                        `🔑 **مفتاح التفعيل (License Key):**\n\`\`\`\n${keyStr}\n\`\`\`\n` +
+                        `⏳ **المدة:** \`${isLifetime ? '♾️ Lifetime VIP (مدى الحياة)' : `${daysCount} يوم`}\`\n` +
+                        `🛡️ **الحالة:** 🟢 **نشط وموثق (Active)**\n` +
+                        `⚡ **التأخير:** \`0.0ms True Delay Reduction\`\n\n` +
+                        `> ⚠️ *ملاحظة: هذا الترخيص مربوط بجهازك (HWID). لا تقم بمشاركته.*`,
+                      color: 0xFFFFFF,
+                      footer: { text: 'Rakha Services • Delivery Engine' },
+                      timestamp: new Date().toISOString()
+                    }]
+                  });
+                  const msgReq = https.request({
+                    hostname: 'discord.com',
+                    path: `/api/v10/channels/${ch.id}/messages`,
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bot ${botToken}`,
+                      'Content-Type': 'application/json',
+                      'Content-Length': Buffer.byteLength(dmMsg),
+                      'User-Agent': 'RakhaKeyGenBot (https://rakha.me, 1.0.0)'
+                    }
+                  });
+                  msgReq.on('error', () => {});
+                  msgReq.write(dmMsg);
+                  msgReq.end();
+                }
+              } catch (e) {}
+            });
+          });
+          dmReq.on('error', () => {});
+          dmReq.write(openDmPayload);
+          dmReq.end();
+        } catch (e) {}
+      }
+    }
+  } catch (err) {
+    console.warn('syncToDiscordBot error:', err.message);
+  }
+};
+
 router.post('/', dashboardProtect, verifyAppOwner, async (req, res) => {
   try {
     const {
@@ -263,175 +472,36 @@ router.post('/', dashboardProtect, verifyAppOwner, async (req, res) => {
 
     const maskStr = mask != null ? String(mask).trim() : '';
 
-    const syncToDiscordBot = async (keyStr, daysCount, clientName, clientUserId, avatarUrl) => {
-      try {
-        const fs = require('fs');
-        const path = require('path');
-        const botDbPaths = [
-          'C:\\Users\\RAKHA\\Desktop\\RAKHA BOTS (REVIEWS & KEY GEN)\\KEY GENERATOR BOT\\database.json',
-          'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\SOURCE\\RAKHA DILV BOT (DONE)\\database.json',
-          'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\LUNCH\\key-gen-bot\\database.json',
-          'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA DILV BOT\\database.json',
-          'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA AUTH\\bot\\database.json',
-          'C:\\Users\\RAKHA\\Desktop\\RAKHAS TWEAKS PROJECT\\RAKHA AUTH & TWEAKS APP ON RENDER HOST\\bot\\database.json',
-          path.join(__dirname, '..', 'bot', 'database.json'),
-          'C:\\Users\\RAKHA\\Desktop\\حمايه رخا\\حمايه رخا\\Rakha Auth\\bot\\database.json'
-        ];
-        for (const dbPath of botDbPaths) {
-          if (fs.existsSync(dbPath)) {
-            let botDb = { keys: {} };
-            try {
-              botDb = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
-            } catch (e) {
-              botDb = { keys: {} };
-            }
-            if (!botDb.keys) botDb.keys = {};
-            const isLifetime = expiryType === 'lifetime' || daysCount === 0;
-            botDb.keys[keyStr] = {
-              key: keyStr,
-              name: clientName || 'Rakha Client',
-              days: isLifetime ? 'lifetime' : String(daysCount),
-              userId: clientUserId || '',
-              customAvatar: avatarUrl || null,
-              status: 'active',
-              createdAt: new Date().toISOString(),
-              generatedBy: createdBy || 'Dashboard'
-            };
-            fs.writeFileSync(dbPath, JSON.stringify(botDb, null, 2), 'utf8');
-          }
-        }
+    if (mongoose.connection.readyState !== 1 || req.params.appId === 'app_rakha_v3') {
+      const isLifetime = expiryType === 'lifetime' || days === 0;
+      const createdKeys = [];
+      for (let i = 0; i < count; i++) {
+        const keyValue = maskStr
+          ? generateFromMask(maskStr, { lowercase: !!lowercase, uppercase: !!uppercase })
+          : generateLicenseKey(keyPrefix);
 
-        // Send notification to Discord Webhook
-        const webhookUrl = 'https://discord.com/api/webhooks/1545060653906272306/kTZPuXrOxjA8VlKxlBzcs11lQULN4KmrB78W3Q5IEcWBmRelBpMNBkrH9gSsmrdmxXgs';
-        try {
-          const https = require('https');
-          const isLifetime = expiryType === 'lifetime' || daysCount === 0;
-          const payload = JSON.stringify({
-            username: 'RAKHA KEY GEN // السجلات',
-            avatar_url: avatarUrl || 'https://cdn.discordapp.com/embed/avatars/0.png',
-            embeds: [{
-              title: '✅ تم توليد المفتاح من لوحة التحكم بنجاح!',
-              description: `🔑 **المفتاح**: \`${keyStr}\`\n` +
-                `👤 **العميل**: **${clientName || 'Rakha Client'}** ${clientUserId ? `(<@${clientUserId}>)` : ''}\n` +
-                `⏳ **المدة**: \`${isLifetime ? '♾️ Lifetime' : `${daysCount} يوم`}\`\n` +
-                `🛡️ **الحالة**: 🟢 **نشط (ACTIVE)**\n` +
-                `👮 **بواسطة**: **${createdBy || 'Admin'} (Web Dashboard)**`,
-              color: 0xFFFFFF,
-              thumbnail: avatarUrl ? { url: avatarUrl } : undefined,
-              footer: { text: 'RAKHA STORE • نظام التراخيص الرسمي' },
-              timestamp: new Date().toISOString()
-            }]
-          });
-          const urlObj = new URL(webhookUrl);
-          const reqObj = https.request({
-            hostname: urlObj.hostname,
-            path: urlObj.pathname + urlObj.search,
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(payload)
-            }
-          });
-          reqObj.on('error', () => {});
-          reqObj.write(payload);
-          reqObj.end();
-        } catch (e) {}
-
-        // Direct DM Delivery to User via Delivery Bot Token
-        if (clientUserId) {
-          try {
-            const https = require('https');
-            const cleanId = String(clientUserId).replace(/[^0-9]/g, '');
-            if (cleanId.length >= 16) {
-              const isLifetime = expiryType === 'lifetime' || daysCount === 0;
-              const finalDays = isLifetime ? 'lifetime' : String(daysCount);
-
-              // 1. Try local Delivery Bot first
-              try {
-                const http = require('http');
-                const localPayload = JSON.stringify({
-                  userId: cleanId,
-                  key: keyStr,
-                  days: finalDays,
-                  clientName: clientName || 'Rakha Client'
-                });
-                const lReq = http.request({
-                  hostname: '127.0.0.1',
-                  port: 3000,
-                  path: '/api/deliver-key',
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(localPayload)
-                  },
-                  timeout: 3000
-                });
-                lReq.on('error', () => {});
-                lReq.write(localPayload);
-                lReq.end();
-              } catch (e) {}
-
-              // 2. Direct Discord API DM with Key Delivery Bot Token
-              const botToken = "MTU0NTAxODU2MTg0NjgzNzI5MQ.GukYF1._3ZSdFDDzuYv7M_LLHTqSTx5PaOY4dRLipIxHI";
-              const openDmPayload = JSON.stringify({ recipient_id: cleanId });
-              const dmReq = https.request({
-                hostname: 'discord.com',
-                path: '/api/v10/users/@me/channels',
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bot ${botToken}`,
-                  'Content-Type': 'application/json',
-                  'User-Agent': 'RakhaKeyGenBot (https://rakha.me, 1.0.0)'
-                }
-              }, (dmRes) => {
-                let dmBuf = '';
-                dmRes.on('data', c => dmBuf += c);
-                dmRes.on('end', () => {
-                  try {
-                    const ch = JSON.parse(dmBuf);
-                    if (ch && ch.id) {
-                      const dmMsg = JSON.stringify({
-                        embeds: [{
-                          title: '👑 RAKHA TWEAKS V3 • مفتاح التفعيل الخاص بك',
-                          description: `مرحباً بك يا **${clientName || 'عزيزنا العميل'}**!\nتم إصدار ترخيصك بنجاح من متجر رخا. استخدم هذا المفتاح لتفعيل البرنامج:\n\n` +
-                            `🔑 **مفتاح التفعيل (License Key):**\n\`\`\`\n${keyStr}\n\`\`\`\n` +
-                            `⏳ **المدة:** \`${isLifetime ? '♾️ Lifetime VIP (مدى الحياة)' : `${daysCount} يوم`}\`\n` +
-                            `🛡️ **الحالة:** 🟢 **نشط وموثق (Active)**\n` +
-                            `⚡ **التأخير:** \`0.0ms True Delay Reduction\`\n\n` +
-                            `> ⚠️ *ملاحظة: هذا الترخيص مربوط بجهازك (HWID). لا تقم بمشاركته.*`,
-                          color: 0xFFFFFF,
-                          footer: { text: 'Rakha Services • Delivery Engine' },
-                          timestamp: new Date().toISOString()
-                        }]
-                      });
-                      const msgReq = https.request({
-                        hostname: 'discord.com',
-                        path: `/api/v10/channels/${ch.id}/messages`,
-                        method: 'POST',
-                        headers: {
-                          'Authorization': `Bot ${botToken}`,
-                          'Content-Type': 'application/json',
-                          'Content-Length': Buffer.byteLength(dmMsg),
-                          'User-Agent': 'RakhaKeyGenBot (https://rakha.me, 1.0.0)'
-                        }
-                      });
-                      msgReq.on('error', () => {});
-                      msgReq.write(dmMsg);
-                      msgReq.end();
-                    }
-                  } catch (e) {}
-                });
-              });
-              dmReq.on('error', () => {});
-              dmReq.write(openDmPayload);
-              dmReq.end();
-            }
-          } catch (e) {}
-        }
-      } catch (err) {
-        console.warn('syncToDiscordBot error:', err.message);
+        const saved = standaloneKeys.saveKey({
+          key: keyValue,
+          clientName: name || 'Rakha Client',
+          name: name || 'Rakha Client',
+          duration: isLifetime ? 0 : days,
+          days: isLifetime ? 'lifetime' : String(days),
+          userId: userId || '',
+          customAvatar: customAvatar || null,
+          status: 'active',
+          note: note || '',
+          generatedBy: createdBy || 'Dashboard'
+        });
+        createdKeys.push(saved);
+        syncToDiscordBot(saved.key, days, name, userId, customAvatar, createdBy).catch(() => {});
       }
-    };
+      return res.status(201).json({
+        success: true,
+        key: createdKeys[0],
+        keys: createdKeys,
+        count: createdKeys.length
+      });
+    }
 
     if (count === 1) {
       const keyValue = maskStr
@@ -451,7 +521,7 @@ router.post('/', dashboardProtect, verifyAppOwner, async (req, res) => {
       });
 
       const exposed = revealKeyForOwner(key);
-      syncToDiscordBot(exposed.key, days, name, userId, customAvatar).catch(() => {});
+      syncToDiscordBot(exposed.key, days, name, userId, customAvatar, createdBy).catch(() => {});
       return res.status(201).json({ success: true, key: exposed, keys: [exposed], count: 1 });
     }
 
@@ -526,6 +596,8 @@ function syncKeyStatusToBots(plainKey, status, reason = '') {
       } catch (e) {}
     }
   }
+  // Also forward status to 509 Cloud
+  standaloneKeys.syncKeyTo509Bot({ key: plainKey, status: status, banReason: reason }).catch(() => {});
 }
 
 function deleteKeyFromBots(plainKey) {
@@ -544,11 +616,22 @@ function deleteKeyFromBots(plainKey) {
       } catch (e) {}
     }
   }
+  // Also forward deletion to 509 Cloud
+  standaloneKeys.deleteKeyFrom509Bot(plainKey).catch(() => {});
 }
 
 router.put('/:keyId', dashboardProtect, verifyAppOwner, async (req, res) => {
   try {
     const { status, note, duration } = req.body;
+    if (mongoose.connection.readyState !== 1 || req.params.appId === 'app_rakha_v3') {
+      const updated = standaloneKeys.updateKey(req.params.keyId, { status, note, duration });
+      if (updated) {
+        syncKeyStatusToBots(updated.key, status, note);
+        return res.json({ success: true, key: updated });
+      }
+      return res.status(404).json({ success: false, message: 'Key not found' });
+    }
+
     const key = await LicenseKey.findOne({ _id: req.params.keyId, app: req.params.appId });
     if (!key) return res.status(404).json({ success: false, message: 'Key not found' });
 
@@ -574,6 +657,10 @@ router.put('/:keyId', dashboardProtect, verifyAppOwner, async (req, res) => {
 
 router.post('/:keyId/reset-hwid', dashboardProtect, verifyAppOwner, async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1 || req.params.appId === 'app_rakha_v3') {
+      standaloneKeys.updateKey(req.params.keyId, { hwid: null });
+      return res.json({ success: true, hwid: null, message: 'HWID reset successfully' });
+    }
     const result = await resetDeviceBinding({
       appId: req.params.appId,
       licenseKeyId: req.params.keyId,
@@ -587,6 +674,15 @@ router.post('/:keyId/reset-hwid', dashboardProtect, verifyAppOwner, async (req, 
 
 router.post('/delete-selected', dashboardProtect, verifyAppOwner, async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1 || req.params.appId === 'app_rakha_v3') {
+      const ids = req.body?.ids || [];
+      for (const id of ids) {
+        standaloneKeys.deleteKey(id);
+        deleteKeyFromBots(id);
+      }
+      return res.json({ success: true, deleted: ids.length });
+    }
+
     const ids = pickObjectIds(req.body?.ids);
     if (!ids.length) {
       return res.status(400).json({ success: false, message: 'No keys selected' });
@@ -665,6 +761,12 @@ router.delete('/bulk/expired', dashboardProtect, verifyAppOwner, async (req, res
 
 router.delete('/:keyId', dashboardProtect, verifyAppOwner, async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1 || req.params.appId === 'app_rakha_v3') {
+      standaloneKeys.deleteKey(req.params.keyId);
+      deleteKeyFromBots(req.params.keyId);
+      return res.json({ success: true, message: 'Key deleted' });
+    }
+
     const deleted = await LicenseKey.findOneAndDelete({ _id: req.params.keyId, app: req.params.appId });
     if (!deleted) return res.status(404).json({ success: false, message: 'Key not found' });
     await unlinkUsers(req.params.appId, [deleted._id]);

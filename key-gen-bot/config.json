@@ -1,5 +1,5 @@
 {
-  "botToken": "MTU0NTAxODU2MTg0NjgzNzI5MQ.GukYF1._3ZSdFDDzuYv7M_LLHTqSTx5PaOY4dRLipIxHI",
+  "botToken": "MTU0NTAxODU2MTg0NjgzNzI5MQ.GigaDa.adiqzTvOOsQdZtejXcyOkK2Gw9Stldk8BjyC50",
   "clientId": "1545018561846837291",
   "logWebhook": "https://discord.com/api/webhooks/1545060653906272306/kTZPuXrOxjA8VlKxlBzcs11lQULN4KmrB78W3Q5IEcWBmRelBpMNBkrH9gSsmrdmxXgs",
   "channels": {
@@ -10,5 +10,7 @@
     "logs": "1545062072688189540",
     "reviews": "1532195725688180857"
   },
+  "reviewsBotToken": "MTU0NzY4OTQxMTg1NDk5MTM3Mg.GsAVtx.XO2TY4w9q_5wLiv4NfecrfV8D9UFsHsK2FCWR0",
+  "reviewsClientId": "1547689411854991372",
   "apiPort": 3000
 }

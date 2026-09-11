@@ -1,9 +1,18 @@
 /**
- * RAKHA KEY GEN - Official Discord License Management Bot
+ * RAKHA UNIFIED DISCORD BOT ENGINE (KEY GEN & REVIEWS)
  * By: rakha
  * Support: mohamed
- * Color Theme: Pure Cyber White (0xFFFFFF)
+ * Color Theme: Pure Cyber White (0xFFFFFF) & Cyber Green (0x00FF88)
  * Language: Arabic (اللغة العربية)
+ * 
+ * Unified Capabilities:
+ * 1. Key Generator Discord Bot (Dashboards, Modals, Buttons, DM Delivery, Realtime DB)
+ * 2. Reviews Discord Bot (Verified Reviews Dispatcher, Auto-reactions ⭐ ❤️, Slash /reviews-stats)
+ * 3. Unified Express API (Port 3000 / Environment PORT)
+ *    - /health (200 OK)
+ *    - /api/verify-license & /api/app-verify-key
+ *    - /api/deliver-key
+ *    - /api/reviews & /api/submit-review
  */
 
 const {
@@ -20,7 +29,8 @@ const {
   WebhookClient,
   REST,
   Routes,
-  SlashCommandBuilder
+  SlashCommandBuilder,
+  ActivityType
 } = require('discord.js');
 
 const fs = require('fs');
@@ -30,11 +40,11 @@ const express = require('express');
 const cors = require('cors');
 
 process.on('uncaughtException', (err) => {
-  console.warn('[Bot Process] Handled exception:', err.message);
+  console.warn('[Unified Bot Process] Handled exception:', err.message);
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.warn('[Bot Process] Handled rejection:', reason);
+  console.warn('[Unified Bot Process] Handled rejection:', reason);
 });
 
 // 1. Load Configuration
@@ -50,7 +60,9 @@ try {
 
 // Support Environment Variables from Cloud / 509 Cloud
 config.botToken = (process.env.BOT_TOKEN || process.env.DISCORD_TOKEN || config.botToken || '').trim();
-config.clientId = (process.env.CLIENT_ID || config.clientId || '').trim();
+config.reviewsBotToken = (process.env.REVIEWS_BOT_TOKEN || config.reviewsBotToken || '').trim();
+config.clientId = (process.env.CLIENT_ID || config.clientId || '1545018561846837291').trim();
+config.reviewsClientId = (process.env.REVIEWS_CLIENT_ID || config.reviewsClientId || '1547689411854991372').trim();
 config.logWebhook = (process.env.LOG_WEBHOOK || config.logWebhook || '').trim();
 config.channels = config.channels || {};
 if (process.env.CHANNEL_GENERATE) config.channels.generate = process.env.CHANNEL_GENERATE.trim();
@@ -58,21 +70,105 @@ if (process.env.CHANNEL_ENABLE) config.channels.enable = process.env.CHANNEL_ENA
 if (process.env.CHANNEL_DISABLE) config.channels.disable = process.env.CHANNEL_DISABLE.trim();
 if (process.env.CHANNEL_STOP) config.channels.stop = process.env.CHANNEL_STOP.trim();
 if (process.env.CHANNEL_LOGS) config.channels.logs = process.env.CHANNEL_LOGS.trim();
-if (process.env.CHANNEL_REVIEWS) config.channels.reviews = process.env.CHANNEL_REVIEWS.trim();
+if (process.env.CHANNEL_REVIEWS || process.env.REVIEWS_CHANNEL_ID) {
+  config.channels.reviews = (process.env.CHANNEL_REVIEWS || process.env.REVIEWS_CHANNEL_ID).trim();
+}
+if (!config.channels.reviews) {
+  config.channels.reviews = config.reviewsChannelId || '1532195725688180857';
+}
 
-// 2. Database Setup
+// 2. Database Setup (Keys DB + Reviews DB)
 const dbPath = path.join(__dirname, 'database.json');
 let db = { keys: {} };
 if (fs.existsSync(dbPath)) {
   try {
     db = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+    if (!db.keys) db.keys = {};
   } catch {
     db = { keys: {} };
   }
 }
 
 function saveDB() {
-  fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf8');
+  try {
+    fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Failed to save database.json:', err.message);
+  }
+}
+
+// Bi-directional sync with Render (auth.rakha.me)
+function syncKeyToRender(record) {
+  return new Promise((resolve) => {
+    try {
+      const https = require('https');
+      const payload = JSON.stringify(record);
+      const req = https.request({
+        hostname: 'auth.rakha.me',
+        path: '/api/sync-bot-key',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
+        },
+        timeout: 5000
+      }, (res) => {
+        resolve(res.statusCode === 200);
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => { req.destroy(); resolve(false); });
+      req.write(payload);
+      req.end();
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+function deleteKeyFromRender(key) {
+  return new Promise((resolve) => {
+    try {
+      const https = require('https');
+      const payload = JSON.stringify({ key });
+      const req = https.request({
+        hostname: 'auth.rakha.me',
+        path: '/api/local-delete-key',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
+        },
+        timeout: 5000
+      }, (res) => {
+        resolve(res.statusCode === 200);
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => { req.destroy(); resolve(false); });
+      req.write(payload);
+      req.end();
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+const reviewsDbPath = path.join(__dirname, 'reviews.json');
+let reviewsDb = [];
+if (fs.existsSync(reviewsDbPath)) {
+  try {
+    reviewsDb = JSON.parse(fs.readFileSync(reviewsDbPath, 'utf8'));
+    if (!Array.isArray(reviewsDb)) reviewsDb = [];
+  } catch {
+    reviewsDb = [];
+  }
+}
+
+function saveReviews() {
+  try {
+    fs.writeFileSync(reviewsDbPath, JSON.stringify(reviewsDb, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Failed to save reviews.json:', err.message);
+  }
 }
 
 function generateRandomKey() {
@@ -96,7 +192,7 @@ async function sendWebhookLog(embed) {
   if (!webhookClient) return;
   try {
     await webhookClient.send({
-      username: 'RAKHA KEY GEN // السجلات',
+      username: 'RAKHA SYSTEM // السجلات',
       avatarURL: 'https://cdn.discordapp.com/embed/avatars/0.png',
       embeds: [embed]
     });
@@ -105,16 +201,137 @@ async function sendWebhookLog(embed) {
   }
 }
 
-// 4. Discord Client
+// 4. Discord Clients Setup (Dual Bot or Unified Single Bot)
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.DirectMessages
+    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.MessageContent
   ]
 });
 
+// If user supplies a separate REVIEWS_BOT_TOKEN, spin up a dedicated client for reviews
+const hasDedicatedReviewsBot = Boolean(config.reviewsBotToken && config.reviewsBotToken !== config.botToken);
+let reviewsClient = client;
+
+if (hasDedicatedReviewsBot) {
+  reviewsClient = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent
+    ]
+  });
+}
+
+function getActiveReviewsClient() {
+  if (hasDedicatedReviewsBot && reviewsClient && reviewsClient.isReady()) {
+    return reviewsClient;
+  }
+  return client;
+}
+
 const bannerPath = path.join(__dirname, 'assets', 'banner.png');
+
+// --- REVIEWS SYSTEM ENGINE ---
+async function dispatchReviewEmbed(reviewData) {
+  const { key, user, rating, reviewText, avatar } = reviewData || {};
+  if (!reviewText || !reviewText.trim()) {
+    throw new Error('Review text is required');
+  }
+
+  const numRating = Math.max(1, Math.min(5, parseInt(rating) || 5));
+  const stars = '⭐'.repeat(numRating);
+  const userAvatar = (avatar && String(avatar).startsWith('http'))
+    ? avatar
+    : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png';
+
+  const embed = new EmbedBuilder()
+    .setAuthor({
+      name: `${user || 'عميل RAKHA'} // Verified Customer`,
+      iconURL: userAvatar
+    })
+    .setTitle(`🌟 تقييم ورأي جديد // NEW VERIFIED REVIEW`)
+    .setDescription(
+      `💬 **نص التقييم:**\n\`\`\`\n${reviewText.trim()}\n\`\`\`\n` +
+      `• **التقييم**: ${stars} (${numRating}/5)\n` +
+      `• **العميل**: **${user || 'عميل RAKHA'}**\n` +
+      `• **الحالة**: ✅ **Verified Customer**\n` +
+      `• **التاريخ**: <t:${Math.floor(Date.now() / 1000)}:F>`
+    )
+    .setThumbnail(userAvatar)
+    .setColor(0x00FF88)
+    .setFooter({ text: 'RAKHA REVIEWS • Real-time Feedback Engine', iconURL: userAvatar })
+    .setTimestamp();
+
+  const activeBot = getActiveReviewsClient();
+  const reviewChId = config.channels?.reviews || '1532195725688180857';
+
+  let ch = null;
+  try {
+    ch = await activeBot.channels.fetch(reviewChId);
+  } catch (err) {
+    console.warn(`[Reviews] Could not fetch channel with active reviews bot:`, err.message);
+    if (activeBot !== client) {
+      try { ch = await client.channels.fetch(reviewChId); } catch {}
+    }
+  }
+
+  if (!ch || !ch.isTextBased()) {
+    throw new Error(`Reviews channel ${reviewChId} not found or not text-based`);
+  }
+
+  const sentMsg = await ch.send({ embeds: [embed] });
+  await sentMsg.react('⭐').catch(() => {});
+  await sentMsg.react('❤️').catch(() => {});
+
+  // Save to Reviews DB
+  reviewsDb.push({
+    id: sentMsg.id,
+    key: key || 'CLIENT-APP',
+    user: user || 'Rakha Client',
+    rating: numRating,
+    reviewText: reviewText.trim(),
+    avatar: userAvatar,
+    createdAt: new Date().toISOString()
+  });
+  saveReviews();
+
+  // Send to Webhook
+  await sendWebhookLog(embed);
+
+  // Send to Logs Channel
+  try {
+    if (config.channels?.logs) {
+      const logCh = await client.channels.fetch(config.channels.logs).catch(() => null);
+      if (logCh && logCh.isTextBased()) await logCh.send({ embeds: [embed] });
+    }
+  } catch (e) {}
+
+  return { success: true, messageId: sentMsg.id };
+}
+
+function sendReviewsStatsReply(interaction) {
+  const total = reviewsDb.length;
+  const sum = reviewsDb.reduce((acc, r) => acc + (parseInt(r.rating) || 5), 0);
+  const avg = total > 0 ? (sum / total).toFixed(1) : '5.0';
+
+  const embed = new EmbedBuilder()
+    .setTitle('📊 إحصائيات تقييمات RAKHA TWEAKS')
+    .setDescription(
+      `🌟 **لوحة مؤشرات التقييمات الرسمية الموثقة**\n\n` +
+      `• **إجمالي المراجعات الموثقة**: \`${total}\` تقييم\n` +
+      `• **متوسط التقييم العام**: ⭐ **${avg} / 5**\n` +
+      `• **حالة البوت**: 🟢 يعمل بكفاءة عالية 24/7\n` +
+      `• **روم التقييمات**: <#${config.channels?.reviews || '1532195725688180857'}>`
+    )
+    .setColor(0x00FF88)
+    .setFooter({ text: 'RAKHA REVIEWS • Official Feedback System' })
+    .setTimestamp();
+
+  return interaction.reply({ embeds: [embed] });
+}
 
 // 5. Post Dashboards Function (All in White & Arabic)
 async function postDashboards() {
@@ -308,6 +525,10 @@ client.on('interactionCreate', async (interaction) => {
 
       return interaction.reply({ embeds: [clearEmbed] });
     }
+
+    if (interaction.commandName === 'reviews-stats') {
+      return sendReviewsStatsReply(interaction);
+    }
   }
 
   // ضغطات الأزرار
@@ -424,7 +645,8 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId === 'modal_gen_key') {
       const days = interaction.fields.getTextInputValue('input_days').trim();
       const name = interaction.fields.getTextInputValue('input_name').trim();
-      const userId = interaction.fields.getTextInputValue('input_userid').trim();
+      const rawUserId = interaction.fields.getTextInputValue('input_userid').trim();
+      const cleanUserId = rawUserId.replace(/[^0-9]/g, '');
       let customAvatar = '';
       try {
         customAvatar = interaction.fields.getTextInputValue('input_avatar')?.trim() || '';
@@ -433,56 +655,64 @@ client.on('interactionCreate', async (interaction) => {
       const newKey = generateRandomKey();
       const createdDate = new Date().toISOString();
 
-      db.keys[newKey] = {
+      const record = {
         key: newKey,
         name,
         days,
-        userId,
+        userId: cleanUserId || rawUserId,
         customAvatar: customAvatar || null,
         status: 'active',
         createdAt: createdDate,
         generatedBy: interaction.user.tag
       };
+
+      db.keys[newKey] = record;
       saveDB();
+
+      // مزامنة فورية مع سيرفر رندر والموقع الرسمي
+      syncKeyToRender(record).catch(() => {});
 
       // إرسال المفتاح في الخاص للعميل
       let dmSent = false;
-      try {
-        const targetUser = await client.users.fetch(userId);
-        if (targetUser) {
-          const dmEmbed = new EmbedBuilder()
-            .setTitle('👑 RAKHA TWEAKS // مفتاح الترخيص الخاص بك')
-            .setDescription(
-              `مرحباً بك يا **${name}**، تم إنشاء وتفعيل مفتاحك الرسمي لتطبيق **RAKHA TWEAKS**!\n\n` +
-              `🔑 **مفتاح الترخيص**: \`${newKey}\`\n` +
-              `⏳ **المدة**: \`${days}\` يوم\n` +
-              `👤 **المالك**: <@${userId}>\n\n` +
-              `**طريقة الاستخدام:**\n` +
-              `1. افتح تطبيق **Rakha Tweaks** على جهازك.\n` +
-              `2. الصق المفتاح واضغط **ACTIVATE**.\n` +
-              `3. استمتع بأقصى أداء وثبات واستجابة لجهازك!\n\n` +
-              `• **بواسطة**: رخا (rakha)\n` +
-              `• **الدعم الفني**: محمد (mohamed)`
-            )
-            .setColor(0xFFFFFF)
-            .setFooter({ text: 'RAKHA STORE • نظام التراخيص الرسمي' })
-            .setTimestamp();
+      if (cleanUserId) {
+        try {
+          const targetUser = await client.users.fetch(cleanUserId);
+          if (targetUser) {
+            const isLifetime = String(days).toLowerCase().includes('life') || days === 0 || days === '0';
+            const dmEmbed = new EmbedBuilder()
+              .setTitle('👑 RAKHA TWEAKS // مفتاح الترخيص الخاص بك')
+              .setDescription(
+                `مرحباً بك يا **${name}**، تم إنشاء وتفعيل مفتاحك الرسمي لتطبيق **RAKHA TWEAKS**!\n\n` +
+                `🔑 **مفتاح الترخيص**: \`${newKey}\`\n` +
+                `⏳ **المدة**: \`${isLifetime ? '♾️ Lifetime VIP (مدى الحياة)' : `${days} يوم`}\`\n` +
+                `👤 **المالك**: <@${cleanUserId}>\n\n` +
+                `**طريقة الاستخدام:**\n` +
+                `1. افتح تطبيق **Rakha Tweaks** على جهازك.\n` +
+                `2. الصق المفتاح واضغط **ACTIVATE**.\n` +
+                `3. استمتع بأقصى أداء وثبات واستجابة لجهازك!\n\n` +
+                `• **بواسطة**: رخا (rakha)\n` +
+                `• **الدعم الفني**: محمد (mohamed)`
+              )
+              .setColor(0xFFFFFF)
+              .setFooter({ text: 'RAKHA STORE • نظام التراخيص الرسمي' })
+              .setTimestamp();
 
-          await targetUser.send({ embeds: [dmEmbed] });
-          dmSent = true;
+            await targetUser.send({ embeds: [dmEmbed] });
+            dmSent = true;
+          }
+        } catch (dmErr) {
+          console.warn('تعذر إرسال رسالة خاصة للعميل:', dmErr.message);
         }
-      } catch (dmErr) {
-        console.warn('تعذر إرسال رسالة خاصة للعميل:', dmErr.message);
       }
 
-      // رسالة السجل العامة الظاهرة للجميع في روم السجلات (1545062072688189540)
+      // رسالة السجل العامة الظاهرة للجميع في روم السجلات
       const publicEmbed = new EmbedBuilder()
         .setTitle('✅ تم توليد المفتاح بنجاح!')
         .setDescription(
           `🔑 **المفتاح**: \`${newKey}\`\n` +
-          `👤 **العميل**: **${name}** (<@${userId}>)\n` +
+          `👤 **العميل**: **${name}** (<@${cleanUserId || rawUserId}>)\n` +
           `⏳ **المدة**: \`${days}\` يوم\n` +
-          `📬 **حالة الخاص**: ${dmSent ? '✔ تم إرسال المفتاح في الخاص للعميل!' : '⚠️ الخاص مغلق عند العميل'}\n` +
+          `📬 **حالة الخاص**: ${dmSent ? '✔ تم إرسال المفتاح في الخاص للعميل!' : '⚠️ الخاص مغلق عند العميل أو الآيدي غير متاح'}\n` +
           `🛡️ **الحالة**: 🟢 **نشط (ACTIVE)**\n` +
           `👮 **بواسطة**: <@${interaction.user.id}>`
         )
@@ -490,7 +720,6 @@ client.on('interactionCreate', async (interaction) => {
         .setFooter({ text: 'By: rakha | Support: mohamed' })
         .setTimestamp();
 
-      // نشر الرسالة في روم السجلات العامة 1545062072688189540 (تظهر للجميع ليست مخفية)
       try {
         const logChannel = await client.channels.fetch(config.channels.logs);
         if (logChannel) {
@@ -500,8 +729,15 @@ client.on('interactionCreate', async (interaction) => {
         console.warn('خطأ في إرسال السجل لروم السجلات:', logErr.message);
       }
 
-      // إغلاق النافذة بصمت تام ليبقى روم التوليد نظيفاً بلوحة التحكم فقط بدون أي رسائل زائدة
-      return interaction.deferUpdate();
+      // إشعار فوري للأدمن برقم المفتاح وحالة الإرسال
+      return interaction.reply({
+        content: `✅ **تم توليد وتوثيق المفتاح بنجاح!**\n\n` +
+          `🔑 **المفتاح**: \`${newKey}\`\n` +
+          `👤 **العميل**: **${name}** ${cleanUserId ? `(<@${cleanUserId}>)` : ''}\n` +
+          `⏳ **المدة**: \`${days}\` يوم\n` +
+          `📬 **الخاص**: ${dmSent ? '✔ تم إرسال المفتاح للعميل في الخاص بنجاح!' : '⚠️ الخاص مغلق أو الآيدي غير متاح (انسخ المفتاح من هنا وأرسله له يدوياً)'}`,
+        ephemeral: true
+      });
     }
 
     // B. تفعيل المفتاح
@@ -517,6 +753,9 @@ client.on('interactionCreate', async (interaction) => {
       record.enabledAt = new Date().toISOString();
       record.enabledBy = interaction.user.tag;
       saveDB();
+
+      // مزامنة فورية مع سيرفر رندر والموقع
+      syncKeyToRender(record).catch(() => {});
 
       // إرسال إشعار للعميل في الخاص
       if (record.userId) {
@@ -554,7 +793,7 @@ client.on('interactionCreate', async (interaction) => {
         if (logChannel) await logChannel.send({ embeds: [enableLog] });
       } catch {}
 
-      return interaction.deferUpdate();
+      return interaction.reply({ content: `🟢 تم إعادة تفعيل المفتاح \`${keyToEnable}\` بنجاح!`, ephemeral: true });
     }
 
     // C. تعطيل المفتاح
@@ -570,6 +809,9 @@ client.on('interactionCreate', async (interaction) => {
       record.disabledAt = new Date().toISOString();
       record.disabledBy = interaction.user.tag;
       saveDB();
+
+      // مزامنة فورية مع سيرفر رندر والموقع
+      syncKeyToRender(record).catch(() => {});
 
       // إشعار الخاص
       if (record.userId) {
@@ -607,7 +849,7 @@ client.on('interactionCreate', async (interaction) => {
         if (logChannel) await logChannel.send({ embeds: [disLog] });
       } catch {}
 
-      return interaction.deferUpdate();
+      return interaction.reply({ content: `🚫 تم تعطيل وإلغاء تفعيل المفتاح \`${keyToDisable}\` بنجاح!`, ephemeral: true });
     }
 
     // D. إيقاف المفتاح
@@ -625,6 +867,9 @@ client.on('interactionCreate', async (interaction) => {
       record.pausedAt = new Date().toISOString();
       record.pausedBy = interaction.user.tag;
       saveDB();
+
+      // مزامنة فورية مع سيرفر رندر والموقع
+      syncKeyToRender(record).catch(() => {});
 
       // إشعار الخاص
       if (record.userId) {
@@ -664,12 +909,12 @@ client.on('interactionCreate', async (interaction) => {
         if (logChannel) await logChannel.send({ embeds: [stopLog] });
       } catch {}
 
-      return interaction.deferUpdate();
+      return interaction.reply({ content: `⏸️ تم إيقاف وتجميد المفتاح \`${keyToStop}\` مؤقتاً (\`${stopTime}\`) بنجاح!`, ephemeral: true });
     }
   }
 });
 
-// 7. API Server for App
+// 7. API Server for App & Reviews Engine
 const apiApp = express();
 apiApp.use(cors());
 apiApp.use(express.json());
@@ -739,74 +984,89 @@ apiApp.post('/api/verify-license', async (req, res) => {
   });
 });
 
-// Submit Review Directly to Discord (Webhook + Log Channel)
+// Online Desktop App Key Verification Endpoint
+const handleAppVerifyKey = async (req, res) => {
+  try {
+    const rawKey = String((req.method === 'POST' ? req.body?.key : req.query?.key) || '').trim();
+    const hwid = String((req.method === 'POST' ? req.body?.hwid : req.query?.hwid) || '').trim();
+    if (!rawKey) return res.status(400).json({ success: false, message: 'Key is required' });
+
+    try {
+      if (fs.existsSync(dbPath)) {
+        db = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+      }
+    } catch {}
+
+    const key = rawKey.toUpperCase();
+    const record = db.keys[key];
+    if (!record) return res.status(404).json({ success: false, message: 'Key not found' });
+    if (record.status === 'disabled' || record.status === 'banned') {
+      return res.status(403).json({ success: false, status: 'banned', message: 'License key has been banned/disabled' });
+    }
+    if (record.status === 'paused') {
+      return res.status(403).json({ success: false, status: 'paused', message: 'License key is paused' });
+    }
+
+    if (!record.hwid && hwid) {
+      record.hwid = hwid;
+      saveDB();
+    } else if (record.hwid && hwid && record.hwid !== hwid) {
+      return res.status(403).json({ success: false, message: 'Key locked to another machine' });
+    }
+
+    let discordUser = null;
+    if (record.userId) {
+      try {
+        const u = await client.users.fetch(record.userId);
+        if (u) {
+          discordUser = {
+            id: u.id,
+            username: u.username,
+            displayName: u.globalName || u.username,
+            avatar: record.customAvatar || u.displayAvatarURL({ extension: 'png', size: 256 })
+          };
+        }
+      } catch (e) {}
+    }
+
+    return res.json({
+      success: true,
+      key: record.key,
+      clientName: record.name || discordUser?.displayName || 'Rakha Client',
+      customAvatar: record.customAvatar || discordUser?.avatar || null,
+      days: record.days,
+      status: record.status,
+      product: record.product || 'all',
+      discordUser
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+apiApp.post('/api/app-verify-key', handleAppVerifyKey);
+apiApp.get('/api/app-verify-key', handleAppVerifyKey);
+
+// Submit Review Directly to Discord (Webhook + Log Channel + Reviews Room + DB)
 apiApp.post('/api/submit-review', async (req, res) => {
   try {
-    const { key, user, rating, reviewText, avatar } = req.body || {};
-    if (!reviewText || !reviewText.trim()) {
-      return res.status(400).json({ success: false, message: 'Review text is required.' });
-    }
-
-    const userAvatar = (avatar && String(avatar).startsWith('http'))
-      ? avatar
-      : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png';
-
-    const stars = '⭐'.repeat(Math.max(1, Math.min(5, parseInt(rating) || 5)));
-    const embed = new EmbedBuilder()
-      .setTitle('🌟 تقييم ورأي جديد // NEW CLIENT REVIEW')
-      .setDescription(
-        `💬 **نص التقييم:**\n\`\`\`\n${reviewText.trim()}\n\`\`\`\n` +
-        `• **التقييم**: ${stars} (${rating || 5}/5)\n` +
-        `• **العميل**: **${user || 'عميل RAKHA'}**\n` +
-        `• **التاريخ**: <t:${Math.floor(Date.now() / 1000)}:F>`
-      )
-      .setThumbnail(userAvatar)
-      .setColor(0x00D2FF)
-      .setFooter({ text: 'RAKHA TWEAKS • Real-time Feedback Engine', iconURL: userAvatar })
-      .setTimestamp();
-
-    // 1. Send via Webhook
-    await sendWebhookLog(embed);
-
-    // 2. Send directly to reviews room (1532195725688180857) USING REVIEWS BOT
-    try {
-      const reviewChId = config.channels?.reviews || '1532195725688180857';
-      const https = require('https');
-      const reviewsBotToken = "MTU0NzY4OTQxMTg1NDk5MTM3Mg.GuUcAH.hff10DLvfkqxzDnW0AKpleO1JCfqeZe-48x9IQ";
-      const msgData = JSON.stringify({ embeds: [embed.toJSON()] });
-      const postReq = https.request({
-        hostname: 'discord.com',
-        path: `/api/v10/channels/${reviewChId}/messages`,
-        method: 'POST',
-        headers: {
-          'Authorization': `Bot ${reviewsBotToken}`,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(msgData),
-          'User-Agent': 'RakhaReviewsBot (https://rakha.me, 1.0.0)'
-        }
-      });
-      postReq.on('error', (err) => console.warn('Reviews bot post error:', err));
-      postReq.write(msgData);
-      postReq.end();
-    } catch (e) {
-      console.warn('Could not send review via reviews bot:', e.message);
-    }
-
-    // 3. Send to logs channel if available
-    try {
-      if (config.channels?.logs) {
-        const logCh = await client.channels.fetch(config.channels.logs);
-        if (logCh) await logCh.send({ embeds: [embed] });
-      }
-    } catch (e) {
-      console.warn('Could not send review to log channel:', e.message);
-    }
-
-    return res.json({ success: true, message: 'Review sent directly to Discord successfully!' });
+    const result = await dispatchReviewEmbed(req.body);
+    return res.json({
+      success: true,
+      message: 'Review sent directly via RAKHA REVIEWS bot!',
+      ...result
+    });
   } catch (err) {
-    console.error('Error handling submit-review:', err);
+    console.error('Error handling submit-review:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to submit review: ' + err.message });
   }
+});
+
+// Get Reviews Stats & Recent Reviews
+apiApp.get('/api/reviews', (req, res) => {
+  const total = reviewsDb.length;
+  const sum = reviewsDb.reduce((acc, r) => acc + (parseInt(r.rating) || 5), 0);
+  const avg = total > 0 ? (sum / total).toFixed(1) : '5.0';
+  res.json({ total, averageRating: avg, reviews: reviewsDb.slice(-50).reverse() });
 });
 
 apiApp.post('/api/deliver-key', async (req, res) => {
@@ -851,8 +1111,72 @@ apiApp.post('/api/deliver-key', async (req, res) => {
   }
 });
 
+apiApp.post('/api/sync-key', (req, res) => {
+  try {
+    const data = req.body || {};
+    if (!data.key) return res.status(400).json({ error: 'Key required' });
+    const cleanKey = String(data.key).trim().toUpperCase();
+    const isLife = String(data.days || data.duration).toLowerCase().includes('life') || data.days === 0 || data.duration === 0 || data.days === '0' || data.duration === '0';
+    db.keys[cleanKey] = {
+      key: cleanKey,
+      name: data.clientName || data.name || 'Rakha Client',
+      days: isLife ? 'lifetime' : String(data.days || data.duration || 30),
+      userId: data.userId || data.discordUserId || '',
+      customAvatar: data.customAvatar || null,
+      status: data.status || 'active',
+      banReason: data.banReason || null,
+      hwid: data.hwid || null,
+      createdAt: data.createdAt || new Date().toISOString(),
+      generatedBy: data.generatedBy || 'Render Website'
+    };
+    saveDB();
+    console.log(`[API Sync] Key ${cleanKey} synced from Render website`);
+    return res.json({ success: true, key: db.keys[cleanKey] });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiApp.post('/api/sync-delete-key', (req, res) => {
+  try {
+    const { key, keys } = req.body || {};
+    const toDel = keys || (key ? [key] : []);
+    let count = 0;
+    for (const k of toDel) {
+      const clean = String(k).trim().toUpperCase();
+      if (db.keys[clean]) {
+        delete db.keys[clean];
+        count++;
+      }
+    }
+    if (count > 0) saveDB();
+    console.log(`[API Sync] Deleted ${count} keys synced from Render website`);
+    return res.json({ success: true, deleted: count });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 apiApp.get('/', (req, res) => {
-  res.json({ status: 'ONLINE', bot: 'RAKHA KEY GEN', host: 'rakha-key-gen-bot.509.rip', totalKeys: Object.keys(db.keys).length });
+  const totalReviews = reviewsDb.length;
+  const sum = reviewsDb.reduce((acc, r) => acc + (parseInt(r.rating) || 5), 0);
+  const avg = totalReviews > 0 ? (sum / totalReviews).toFixed(1) : '5.0';
+
+  res.json({
+    status: 'ONLINE',
+    system: 'RAKHA UNIFIED DISCORD ENGINE (KEY GEN + REVIEWS)',
+    host: 'rakha-bots-unified.509.rip',
+    keyGen: {
+      totalKeys: Object.keys(db.keys || {}).length,
+      botOnline: client.isReady()
+    },
+    reviews: {
+      totalReviews: totalReviews,
+      averageRating: avg,
+      channel: config.channels?.reviews || '1532195725688180857',
+      botOnline: getActiveReviewsClient().isReady()
+    }
+  });
 });
 
 apiApp.get('/health', (req, res) => {
@@ -861,7 +1185,7 @@ apiApp.get('/health', (req, res) => {
 
 const API_PORT = process.env.PORT || config.apiPort || 3000;
 apiApp.listen(API_PORT, '0.0.0.0', () => {
-  console.log(`[License API] خادم التحقق من التراخيص يعمل على المنفذ ${API_PORT} (0.0.0.0)`);
+  console.log(`[License & Reviews API] الخادم يعمل بنجاح على المنفذ ${API_PORT} (0.0.0.0)`);
 });
 
 // 8. Ready Event & Auto-Setup Commands
@@ -874,38 +1198,148 @@ client.once('ready', async () => {
   console.log(`• روم التفعيل: ${config.channels.enable}`);
   console.log(`• روم التعطيل: ${config.channels.disable}`);
   console.log(`• روم الإيقاف: ${config.channels.stop}`);
-  console.log(`• روم السجلات العامة: ${config.channels.logs}`);
+  console.log(`• روم السجلات: ${config.channels.logs}`);
+  console.log(`• روم التقييمات: ${config.channels.reviews}`);
   console.log(`======================================================\n`);
 
-  // Register slash commands
-  const rest = new REST({ version: '10' }).setToken(config.botToken);
-  try {
-    const commands = [
-      new SlashCommandBuilder()
-        .setName('setup-dashboards')
-        .setDescription('نشر لوحات التحكم التفاعلية في الرومات'),
-      new SlashCommandBuilder()
-        .setName('clear-dashboards')
-        .setDescription('مسح وحذف كافة لوحات التحكم التفاعلية القديمة من الرومات'),
-      new SlashCommandBuilder()
-        .setName('clear-all-keys')
-        .setDescription('حذف وتصفير جميع مفاتيح الترخيص من قاعدة البيانات'),
-      new SlashCommandBuilder()
-        .setName('clear')
-        .setDescription('مسح وتصفير جميع مفاتيح الترخيص')
-    ];
+  client.user.setPresence({
+    activities: [{ name: '👑 RAKHA TWEAKS V3 | مفاتيح وتقييمات', type: ActivityType.Watching }],
+    status: 'online'
+  });
 
-    await rest.put(
-      Routes.applicationCommands(config.clientId),
-      { body: commands }
-    );
-    console.log('✔ تم تسجيل الأوامر: /setup-dashboards و /clear-dashboards و /clear-all-keys و /clear بنجاح!');
-  } catch (err) {
-    console.warn('Slash command notice:', err.message);
+  // مزامنة فورية ثنائية الاتجاه مع Render عند تشغيل البوت
+  try {
+    const https = require('https');
+    https.get('https://auth.rakha.me/api/all-keys', (res) => {
+      let buf = '';
+      res.on('data', c => buf += c);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(buf);
+          if (parsed && Array.isArray(parsed.keys)) {
+            let added = 0;
+            for (const rKey of parsed.keys) {
+              if (rKey && rKey.key) {
+                const kClean = String(rKey.key).trim().toUpperCase();
+                if (!db.keys[kClean]) {
+                  db.keys[kClean] = {
+                    key: kClean,
+                    name: rKey.name || rKey.clientName || 'Rakha Client',
+                    days: rKey.days || 'lifetime',
+                    userId: rKey.userId || rKey.discordUserId || '',
+                    customAvatar: rKey.customAvatar || null,
+                    status: rKey.status || 'active',
+                    hwid: rKey.hwid || null,
+                    createdAt: rKey.createdAt || new Date().toISOString(),
+                    generatedBy: rKey.generatedBy || 'Render Website'
+                  };
+                  added++;
+                }
+              }
+            }
+            if (added > 0) {
+              saveDB();
+              console.log(`✔ Synced ${added} keys from auth.rakha.me into local database!`);
+            }
+          }
+        } catch (e) {}
+      });
+    }).on('error', () => {});
+  } catch (e) {}
+
+  // إرسال كافة المفاتيح المحلية إلى Render للتأكد من تطابق السيرفرين بنسبة 100%
+  try {
+    for (const k of Object.values(db.keys || {})) {
+      syncKeyToRender(k).catch(() => {});
+    }
+  } catch (e) {}
+
+  // Register slash commands for Main Bot
+  if (config.botToken && config.clientId) {
+    const rest = new REST({ version: '10' }).setToken(config.botToken);
+    try {
+      const commands = [
+        new SlashCommandBuilder()
+          .setName('setup-dashboards')
+          .setDescription('نشر لوحات التحكم التفاعلية في الرومات'),
+        new SlashCommandBuilder()
+          .setName('clear-dashboards')
+          .setDescription('مسح وحذف كافة لوحات التحكم التفاعلية القديمة من الرومات'),
+        new SlashCommandBuilder()
+          .setName('clear-all-keys')
+          .setDescription('حذف وتصفير جميع مفاتيح الترخيص من قاعدة البيانات'),
+        new SlashCommandBuilder()
+          .setName('clear')
+          .setDescription('مسح وتصفير جميع مفاتيح الترخيص'),
+        new SlashCommandBuilder()
+          .setName('reviews-stats')
+          .setDescription('عرض إحصائيات تقييمات العملاء في RAKHA TWEAKS')
+      ];
+
+      await rest.put(
+        Routes.applicationCommands(config.clientId),
+        { body: commands }
+      );
+      console.log('✔ تم تسجيل كافة أوامر السلاش (/setup-dashboards, /clear-dashboards, /clear-all-keys, /clear, /reviews-stats) بنجاح!');
+    } catch (err) {
+      console.warn('Slash command notice:', err.message);
+    }
   }
 });
 
-client.login(config.botToken);
+// If dedicated reviews bot client is active, register its listeners
+if (hasDedicatedReviewsBot && reviewsClient) {
+  reviewsClient.once('ready', async () => {
+    console.log(`======================================================`);
+    console.log(`⭐ RAKHA REVIEWS BOT ONLINE AS: ${reviewsClient.user.tag}`);
+    console.log(`• Reviews Channel: ${config.channels.reviews}`);
+    console.log(`======================================================`);
+
+    reviewsClient.user.setPresence({
+      activities: [{ name: '⭐ تقييمات العملاء | RAKHA TWEAKS V3', type: ActivityType.Watching }],
+      status: 'online'
+    });
+
+    const reviewsToken = config.reviewsBotToken;
+    const rClientId = config.reviewsClientId || config.clientId;
+    if (reviewsToken && rClientId) {
+      try {
+        const restReviews = new REST({ version: '10' }).setToken(reviewsToken);
+        const rCommands = [
+          new SlashCommandBuilder()
+            .setName('reviews-stats')
+            .setDescription('عرض إحصائيات تقييمات العملاء في RAKHA TWEAKS')
+        ];
+        await restReviews.put(Routes.applicationCommands(rClientId), { body: rCommands });
+        console.log('✔ تم تسجيل أمر /reviews-stats لبوت التقييمات المستقل بنجاح!');
+      } catch (err) {
+        console.warn('Reviews slash command notice:', err.message);
+      }
+    }
+  });
+
+  reviewsClient.on('interactionCreate', async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+    if (interaction.commandName === 'reviews-stats') {
+      return sendReviewsStatsReply(interaction);
+    }
+  });
+}
+
+// Login Clients
+if (config.botToken) {
+  client.login(config.botToken).catch(err => {
+    console.error('❌ Failed to login RAKHA KEY GEN BOT:', err.message);
+  });
+} else {
+  console.warn('⚠️ No botToken provided (BOT_TOKEN environment variable).');
+}
+
+if (hasDedicatedReviewsBot && config.reviewsBotToken) {
+  reviewsClient.login(config.reviewsBotToken).catch(err => {
+    console.error('❌ Failed to login RAKHA REVIEWS BOT:', err.message);
+  });
+}
 
 // Text Command Support: /clear all keys, !clear-dashboards, etc.
 client.on('messageCreate', async (message) => {

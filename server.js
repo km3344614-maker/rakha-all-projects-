@@ -134,7 +134,12 @@ const sdkClientPath = (path = '') => {
     || p.startsWith('/sdk')
     || p === '/handshake' || p === '/verify'
     || p.startsWith('/bot')
-    || p.startsWith('/local-');
+    || p.startsWith('/local-')
+    || p.startsWith('/app-verify-key')
+    || p.startsWith('/submit-review')
+    || p.startsWith('/sync-bot-key')
+    || p.startsWith('/all-keys')
+    || p.startsWith('/health');
 };
 
 app.use('/api', (req, res, next) => {
@@ -345,7 +350,40 @@ app.post('/api/app-verify-key', async (req, res) => {
       console.error('DB verify error:', dbErr.message);
     }
 
-    // 3. Check bot database.json files on disk
+    // 3. Check standalone persistent keys
+    try {
+      const standaloneKeys = require('./utils/standaloneKeys');
+      const sRec = standaloneKeys.getKey(key) || standaloneKeys.getKey(rawKey);
+      if (sRec) {
+        if (sRec.status === 'disabled' || sRec.status === 'banned') {
+          return res.status(403).json({ success: false, status: 'banned', message: '🚫 License banned by Rakha Services' });
+        }
+        if (sRec.status === 'paused') {
+          return res.status(403).json({ success: false, status: 'paused', message: '⏸️ License currently paused' });
+        }
+        if (sRec.hwid && hwid && sRec.hwid !== hwid) {
+          return res.status(403).json({ success: false, status: 'hwid_mismatch', message: '🚫 License locked to another PC' });
+        }
+        if (!sRec.hwid && hwid) {
+          sRec.hwid = hwid;
+          standaloneKeys.saveKey(sRec);
+        }
+        const isLife = String(sRec.days).toLowerCase().includes('life') || sRec.days === '0' || sRec.days === 0;
+        return res.json({
+          success: true,
+          key: rawKey,
+          type: isLife ? 'Lifetime VIP' : `${sRec.days || 30} Days License`,
+          isLifetime: isLife,
+          clientName: sRec.name || sRec.clientName || 'Rakha Client',
+          customAvatar: sRec.customAvatar || null,
+          avatar: sRec.customAvatar || null,
+          discordUserId: sRec.userId || sRec.discordUserId || '',
+          message: 'Key verified successfully!'
+        });
+      }
+    } catch (sErr) {}
+
+    // 4. Check bot database.json files on disk
     for (const p of ALL_BOT_DB_PATHS) {
       if (fs.existsSync(p)) {
         try {
@@ -378,22 +416,91 @@ app.post('/api/app-verify-key', async (req, res) => {
       }
     }
 
+    // 5. Query 509 Cloud Unified Bot API
+    try {
+      const https = require('https');
+      const check509 = await new Promise((resolve) => {
+        const postPayload = JSON.stringify({ key: rawKey, hwid });
+        const botReq = https.request({
+          hostname: 'rakha-bots-unified.509.rip',
+          path: '/api/app-verify-key',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postPayload)
+          },
+          timeout: 4000
+        }, (botRes) => {
+          let buf = '';
+          botRes.on('data', c => buf += c);
+          botRes.on('end', () => {
+            try {
+              const parsed = JSON.parse(buf);
+              parsed._statusCode = botRes.statusCode;
+              resolve(parsed);
+            } catch {
+              resolve(null);
+            }
+          });
+        });
+        botReq.on('error', () => resolve(null));
+        botReq.on('timeout', () => { botReq.destroy(); resolve(null); });
+        botReq.write(postPayload);
+        botReq.end();
+      });
+
+      if (check509 && check509.success) {
+        try {
+          const standaloneKeys = require('./utils/standaloneKeys');
+          standaloneKeys.saveKey(check509);
+        } catch (e) {}
+        return res.json(check509);
+      } else if (check509 && (check509.status === 'banned' || check509.status === 'paused')) {
+        return res.status(403).json(check509);
+      }
+    } catch (e) {}
+
     return res.status(404).json({ success: false, status: 'not_found', message: '❌ Invalid license key or key was deleted!' });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
 
+// Sync bot key to Render persistent storage
+app.post('/api/sync-bot-key', (req, res) => {
+  try {
+    const standaloneKeys = require('./utils/standaloneKeys');
+    const saved = standaloneKeys.saveKey(req.body);
+    return res.json({ success: true, key: saved });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// All keys for bot sync
+app.get('/api/all-keys', (req, res) => {
+  try {
+    const standaloneKeys = require('./utils/standaloneKeys');
+    return res.json({ success: true, keys: standaloneKeys.getAllKeys() });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get('/api/local-keys', (req, res) => {
   try {
+    const standaloneKeys = require('./utils/standaloneKeys');
+    const all = standaloneKeys.getAllKeys();
     let keys = {};
+    for (const k of all) {
+      if (k && k.key) keys[k.key] = k;
+    }
     for (const p of ALL_BOT_DB_PATHS) {
       if (fs.existsSync(p)) {
         try {
           const db = JSON.parse(fs.readFileSync(p, 'utf8')) || {};
-          if (db.keys && Object.keys(db.keys).length > 0) {
-            keys = db.keys;
-            break;
+          if (db.keys) {
+            keys = { ...db.keys, ...keys };
           }
         } catch (e) {}
       }
@@ -414,6 +521,24 @@ app.post('/api/local-sync-key', (req, res) => {
     const clientName = data.clientName || data.name || 'Rakha Client';
     const targetUserId = String(data.discordUserId || data.userId || '').trim();
 
+    // 1. Save to Standalone Persistent Keys
+    const standaloneKeys = require('./utils/standaloneKeys');
+    const saved = standaloneKeys.saveKey({
+      key: cleanKey,
+      clientName: clientName,
+      name: clientName,
+      days: finalDays,
+      duration: isLifetime ? 0 : Number(finalDays) || 30,
+      userId: targetUserId,
+      discordUserId: targetUserId,
+      customAvatar: data.customAvatar || null,
+      status: data.status || 'active',
+      createdAt: data.createdAt || new Date().toISOString(),
+      hwid: data.hwid || null,
+      generatedBy: data.generatedBy || 'Dashboard'
+    });
+
+    // 2. Save to local disk paths if they exist
     for (const p of ALL_BOT_DB_PATHS) {
       try {
         let db = { keys: {} };
@@ -435,41 +560,41 @@ app.post('/api/local-sync-key', (req, res) => {
           generatedBy: 'dashboard'
         };
         fs.writeFileSync(p, JSON.stringify(db, null, 2), 'utf8');
-      } catch (err) {
-        console.warn('Error syncing key to ' + p, err.message);
+      } catch (err) {}
+    }
+
+    // 3. Deliver DM if Discord User ID provided
+    if (targetUserId) {
+      const cleanId = targetUserId.replace(/[^0-9]/g, '');
+      if (cleanId.length >= 16) {
+        try {
+          const https = require('https');
+          const payload = JSON.stringify({
+            userId: cleanId,
+            key: cleanKey,
+            days: finalDays,
+            clientName: clientName
+          });
+          const botReq = https.request({
+            hostname: 'rakha-bots-unified.509.rip',
+            path: '/api/deliver-key',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(payload)
+            },
+            timeout: 5000
+          });
+          botReq.on('error', (e) => {
+            console.warn('⚠️ [DM Notification] Bot delivery error:', e.message);
+          });
+          botReq.write(payload);
+          botReq.end();
+        } catch (e) {}
       }
     }
 
-    // If a Discord user ID was provided, automatically trigger delivery bot to send DM!
-    if (targetUserId) {
-      try {
-        const http = require('http');
-        const payload = JSON.stringify({
-          userId: targetUserId,
-          key: cleanKey,
-          days: finalDays,
-          clientName: clientName
-        });
-        const botReq = http.request({
-          hostname: '127.0.0.1',
-          port: 3000,
-          path: '/api/deliver-key',
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(payload)
-          },
-          timeout: 4000
-        });
-        botReq.on('error', (e) => {
-          console.warn('⚠️ [DM Notification] Bot is not running or error sending DM:', e.message);
-        });
-        botReq.write(payload);
-        botReq.end();
-      } catch (e) {}
-    }
-
-    return res.json({ success: true, message: 'Key synced to database.json successfully', key: cleanKey });
+    return res.json({ success: true, message: 'Key saved and synced successfully', key: cleanKey, data: saved });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -479,6 +604,12 @@ app.post('/api/local-delete-key', (req, res) => {
   try {
     const { key, keys } = req.body || {};
     const keysToDelete = keys || (key ? [key] : []);
+    const standaloneKeys = require('./utils/standaloneKeys');
+    keysToDelete.forEach(k => {
+      const clean = String(k).trim().toUpperCase();
+      standaloneKeys.deleteKey(clean);
+      standaloneKeys.deleteKeyFrom509Bot(clean).catch(() => {});
+    });
     for (const p of ALL_BOT_DB_PATHS) {
       if (fs.existsSync(p)) {
         try {
@@ -500,14 +631,19 @@ app.post('/api/local-ban-key', (req, res) => {
   try {
     const { key, reason, status } = req.body || {};
     const targetStatus = status || 'banned';
+    const cleanKey = String(key || '').trim().toUpperCase();
+    const standaloneKeys = require('./utils/standaloneKeys');
+    standaloneKeys.updateKey(cleanKey, { status: targetStatus, banReason: reason || 'Banned' });
+    standaloneKeys.syncKeyTo509Bot({ key: cleanKey, status: targetStatus, banReason: reason }).catch(() => {});
+
     for (const p of ALL_BOT_DB_PATHS) {
       if (fs.existsSync(p)) {
         try {
           const db = JSON.parse(fs.readFileSync(p, 'utf8')) || {};
-          if (db.keys && db.keys[key]) {
-            db.keys[key].status = targetStatus;
-            if (reason) db.keys[key].banReason = reason;
-            db.keys[key].bannedAt = new Date().toISOString();
+          if (db.keys && db.keys[cleanKey]) {
+            db.keys[cleanKey].status = targetStatus;
+            if (reason) db.keys[cleanKey].banReason = reason;
+            db.keys[cleanKey].bannedAt = new Date().toISOString();
             fs.writeFileSync(p, JSON.stringify(db, null, 2), 'utf8');
           }
         } catch (e) {}
@@ -522,12 +658,17 @@ app.post('/api/local-ban-key', (req, res) => {
 app.post('/api/local-update-key', (req, res) => {
   try {
     const { key, updates } = req.body || {};
+    const cleanKey = String(key || '').trim().toUpperCase();
+    const standaloneKeys = require('./utils/standaloneKeys');
+    standaloneKeys.updateKey(cleanKey, updates);
+    standaloneKeys.syncKeyTo509Bot({ key: cleanKey, ...updates }).catch(() => {});
+
     for (const p of ALL_BOT_DB_PATHS) {
       if (fs.existsSync(p)) {
         try {
           const db = JSON.parse(fs.readFileSync(p, 'utf8')) || {};
-          if (db.keys && db.keys[key]) {
-            Object.assign(db.keys[key], updates || {});
+          if (db.keys && db.keys[cleanKey]) {
+            Object.assign(db.keys[cleanKey], updates || {});
             fs.writeFileSync(p, JSON.stringify(db, null, 2), 'utf8');
           }
         } catch (e) {}
