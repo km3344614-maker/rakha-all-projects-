@@ -17,7 +17,12 @@ const verifyAppOwner = async (req, res, next) => {
     if (!mongoose.Types.ObjectId.isValid(req.params.appId)) {
       return res.status(404).json({ success: false, message: 'Application not found' });
     }
-    const app = await Application.findOne({ _id: req.params.appId, owner: req.user._id });
+
+    const query = req.user?.role === 'admin'
+      ? { _id: req.params.appId, status: { $ne: 'deleted' } }
+      : { _id: req.params.appId, owner: req.user._id, status: { $ne: 'deleted' } };
+
+    const app = await Application.findOne(query);
     if (!app) {
       return res.status(404).json({ success: false, message: 'Application not found' });
     }
