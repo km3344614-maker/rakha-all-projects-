@@ -7,7 +7,8 @@
       "days": "lifetime",
       "duration": 0,
       "status": "active",
-      "createdAt": "2026-01-01T00:00:00.000Z"
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "customAvatar": null
     },
     "RAKHA-LIFE-BXLM-HRHW": {
       "key": "RAKHA-LIFE-BXLM-HRHW",
@@ -16,7 +17,8 @@
       "days": "lifetime",
       "duration": 0,
       "status": "active",
-      "createdAt": "2026-01-01T00:00:00.000Z"
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "customAvatar": null
     },
     "RAKHA-VIP-PRO-2026": {
       "key": "RAKHA-VIP-PRO-2026",
@@ -25,7 +27,8 @@
       "days": "lifetime",
       "duration": 0,
       "status": "active",
-      "createdAt": "2026-01-01T00:00:00.000Z"
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "customAvatar": null
     },
     "RAKHA-LIFE-MNJT-8AOF": {
       "_id": "RAKHA-LIFE-MNJT-8AOF",
@@ -42,6 +45,22 @@
       "activatedAt": "2026-09-11T19:53:26.759Z",
       "hwid": null,
       "generatedBy": ""
+    },
+    "B6VN-GNF2-YAG7-J8UM": {
+      "_id": "B6VN-GNF2-YAG7-J8UM",
+      "key": "B6VN-GNF2-YAG7-J8UM",
+      "name": "OWNER V2",
+      "clientName": "OWNER V2",
+      "days": "30",
+      "duration": 30,
+      "userId": "848830208865992705",
+      "discordUserId": "848830208865992705",
+      "customAvatar": null,
+      "status": "active",
+      "createdAt": "2026-09-12T08:28:56.172Z",
+      "activatedAt": null,
+      "hwid": null,
+      "generatedBy": "Dashboard"
     }
   }
 }
