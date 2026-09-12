@@ -93,12 +93,95 @@ function readDb() {
   return { keys: mergedKeys };
 }
 
+const GITHUB_OWNER = 'km3344614-maker';
+const GITHUB_REPO = 'rakha-all-projects-';
+const GITHUB_FILE_PATH = 'keys_database.json';
+
+function getGitHubToken() {
+  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
+  try {
+    const gitConfigPath = path.join(__dirname, '..', '.git', 'config');
+    if (fs.existsSync(gitConfigPath)) {
+      const content = fs.readFileSync(gitConfigPath, 'utf8');
+      const match = content.match(/https:\/\/([^:@]+)@github\.com/);
+      if (match && match[1]) return match[1];
+    }
+  } catch (e) {}
+  return null;
+}
+
+let isSyncingToGitHub = false;
+async function syncToGitHub(data) {
+  const token = getGitHubToken();
+  if (!token || isSyncingToGitHub) return;
+  isSyncingToGitHub = true;
+  try {
+    const getRes = await new Promise((resolve) => {
+      const req = https.request({
+        hostname: 'api.github.com',
+        path: '/repos/' + GITHUB_OWNER + '/' + GITHUB_REPO + '/contents/' + GITHUB_FILE_PATH,
+        method: 'GET',
+        headers: {
+          'Authorization': 'token ' + token,
+          'User-Agent': 'RakhaAuth-3.0',
+          'Accept': 'application/vnd.github.v3+json'
+        },
+        timeout: 6000
+      }, (res) => {
+        let buf = '';
+        res.on('data', c => buf += c);
+        res.on('end', () => {
+          try { resolve(JSON.parse(buf)); } catch { resolve(null); }
+        });
+      });
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => { req.destroy(); resolve(null); });
+      req.end();
+    });
+
+    const currentSha = getRes?.sha;
+    const fileContent = Buffer.from(JSON.stringify(data, null, 2)).toString('base64');
+    const body = JSON.stringify({
+      message: 'Auto-sync keys database from dashboard [skip ci]',
+      content: fileContent,
+      sha: currentSha
+    });
+
+    await new Promise((resolve) => {
+      const putReq = https.request({
+        hostname: 'api.github.com',
+        path: '/repos/' + GITHUB_OWNER + '/' + GITHUB_REPO + '/contents/' + GITHUB_FILE_PATH,
+        method: 'PUT',
+        headers: {
+          'Authorization': 'token ' + token,
+          'User-Agent': 'RakhaAuth-3.0',
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body)
+        },
+        timeout: 8000
+      }, (res) => {
+        resolve(res.statusCode === 200 || res.statusCode === 201);
+      });
+      putReq.on('error', () => resolve(false));
+      putReq.on('timeout', () => { putReq.destroy(); resolve(false); });
+      putReq.write(body);
+      putReq.end();
+    });
+  } catch (err) {
+    console.warn('[StandaloneKeys] GitHub sync notice:', err.message);
+  } finally {
+    isSyncingToGitHub = false;
+  }
+}
+
 function writeDb(data) {
   try {
     fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
   } catch (e) {
     console.error('[StandaloneKeys] Write error:', e.message);
   }
+  syncToGitHub(data).catch(() => {});
 }
 
 function getAllKeys() {
