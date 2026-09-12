@@ -56,11 +56,12 @@
       "userId": "848830208865992705",
       "discordUserId": "848830208865992705",
       "customAvatar": null,
-      "status": "active",
+      "status": "banned",
       "createdAt": "2026-09-12T08:28:56.172Z",
       "activatedAt": null,
       "hwid": null,
-      "generatedBy": "Dashboard"
+      "generatedBy": "Dashboard",
+      "banReason": "AUTO-BAN: Crack / Tampering detected (Hostile Window Detected - x64dbg - google chrome [chrome.exe])"
     }
   }
 }
