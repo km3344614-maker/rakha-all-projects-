@@ -25,6 +25,9 @@ const revealSecretLimiter = rateLimit({
 });
 
 
+const appOwnerQuery = (user) => (user?.role === 'admin' ? { status: { $ne: 'deleted' } } : { owner: user._id, status: { $ne: 'deleted' } });
+const appByIdQuery = (id, user) => (user?.role === 'admin' ? { _id: id, status: { $ne: 'deleted' } } : { _id: id, owner: user._id, status: { $ne: 'deleted' } });
+
 const toOwnerApp = async (app, extras = {}) => {
   const obj = app.toObject ? app.toObject() : { ...app };
   const [keyCount, userCount] = await Promise.all([
@@ -58,10 +61,7 @@ router.get('/', dashboardProtect, async (req, res) => {
   }
 
   try {
-    const apps = await Application.find({
-      owner: req.user._id,
-      status: { $ne: 'deleted' },
-    }).sort('-createdAt').lean();
+    const apps = await Application.find(appOwnerQuery(req.user)).sort('-createdAt').lean();
     const appIds = apps.map(a => a._id);
 
     const [keyCounts, userCounts] = await Promise.all([
@@ -149,7 +149,7 @@ router.get('/:id', dashboardProtect, async (req, res) => {
   }
 
   try {
-    const app = await Application.findOne({ _id: req.params.id, owner: req.user._id });
+    const app = await Application.findOne(appByIdQuery(req.params.id, req.user));
     if (!app || app.status === 'deleted') return res.status(404).json({ success: false, message: 'Application not found' });
 
     const keyCount = await LicenseKey.countDocuments({ app: app._id });
@@ -172,7 +172,7 @@ router.put('/:id', dashboardProtect, async (req, res) => {
       maintenanceMessage, minVersion,
       vpnBlock, sessionExpirySeconds, oneSessionPerCredential
     } = req.body;
-    const app = await Application.findOne({ _id: req.params.id, owner: req.user._id });
+    const app = await Application.findOne(appByIdQuery(req.params.id, req.user));
     if (!app) return res.status(404).json({ success: false, message: 'Application not found' });
 
     if (typeof name === 'string' && name.trim()) app.name = name.trim().slice(0, 50);
@@ -233,7 +233,7 @@ router.put('/:id', dashboardProtect, async (req, res) => {
 
 router.post('/:id/reveal-secret', revealSecretLimiter, dashboardProtect, async (req, res) => {
   try {
-    const app = await Application.findOne({ _id: req.params.id, owner: req.user._id }).select('+appSecret');
+    const app = await Application.findOne(appByIdQuery(req.params.id, req.user)).select('+appSecret');
     if (!app || app.status === 'deleted') {
       return res.status(404).json({ success: false, message: 'Application not found' });
     }
@@ -249,7 +249,7 @@ router.post('/:id/reveal-secret', revealSecretLimiter, dashboardProtect, async (
 
 router.post('/:id/regenerate-secret', dashboardProtect, async (req, res) => {
   try {
-    const app = await Application.findOne({ _id: req.params.id, owner: req.user._id }).select('+appSecret');
+    const app = await Application.findOne(appByIdQuery(req.params.id, req.user)).select('+appSecret');
     if (!app) return res.status(404).json({ success: false, message: 'Application not found' });
 
     const appSecretPlain = generateAppSecret();
@@ -268,7 +268,7 @@ router.post('/:id/regenerate-secret', dashboardProtect, async (req, res) => {
 
 router.delete('/:id', dashboardProtect, async (req, res) => {
   try {
-    const app = await Application.findOne({ _id: req.params.id, owner: req.user._id }).select('+appSecret');
+    const app = await Application.findOne(appByIdQuery(req.params.id, req.user)).select('+appSecret');
     if (!app) return res.status(404).json({ success: false, message: 'Application not found' });
     if (app.status === 'deleted') {
       return res.json({ success: true, message: 'Application deleted' });
@@ -297,7 +297,7 @@ router.delete('/:id', dashboardProtect, async (req, res) => {
 
 router.get('/:id/sessions', dashboardProtect, async (req, res) => {
   try {
-    const app = await Application.findOne({ _id: req.params.id, owner: req.user._id });
+    const app = await Application.findOne(appByIdQuery(req.params.id, req.user));
     if (!app) return res.status(404).json({ success: false, message: 'Not found' });
 
     const users = await AppUser.find(activeSessionFilter(app))
@@ -339,7 +339,7 @@ router.get('/:id/sessions', dashboardProtect, async (req, res) => {
 
 router.post('/:id/sessions/end', dashboardProtect, async (req, res) => {
   try {
-    const app = await Application.findOne({ _id: req.params.id, owner: req.user._id });
+    const app = await Application.findOne(appByIdQuery(req.params.id, req.user));
     if (!app) return res.status(404).json({ success: false, message: 'Not found' });
 
     const ids = pickObjectIds(
@@ -368,7 +368,7 @@ router.post('/:id/sessions/end', dashboardProtect, async (req, res) => {
 // the string "kill-selected" as a :userId value and route to the wrong handler.
 router.post('/:id/sessions/kill-selected', dashboardProtect, async (req, res) => {
   try {
-    const app = await Application.findOne({ _id: req.params.id, owner: req.user._id });
+    const app = await Application.findOne(appByIdQuery(req.params.id, req.user));
     if (!app) return res.status(404).json({ success: false, message: 'Not found' });
 
     const ids = pickObjectIds(req.body?.ids, 200);
@@ -390,7 +390,7 @@ router.post('/:id/sessions/kill-selected', dashboardProtect, async (req, res) =>
 
 router.post('/:id/sessions/:userId/kill', dashboardProtect, async (req, res) => {
   try {
-    const app = await Application.findOne({ _id: req.params.id, owner: req.user._id });
+    const app = await Application.findOne(appByIdQuery(req.params.id, req.user));
     if (!app) return res.status(404).json({ success: false, message: 'Not found' });
 
     const userId = String(req.params.userId || '').trim();
@@ -412,7 +412,7 @@ router.post('/:id/sessions/:userId/kill', dashboardProtect, async (req, res) => 
 
 router.get('/:id/sdk/cpp', dashboardProtect, async (req, res) => {
   try {
-    const app = await Application.findOne({ _id: req.params.id, owner: req.user._id }).select('+appSecret');
+    const app = await Application.findOne(appByIdQuery(req.params.id, req.user)).select('+appSecret');
     if (!app) return res.status(404).json({ success: false, message: 'Not found' });
 
     const { buildSdkZip } = require('../utils/sdkBind');
@@ -432,7 +432,7 @@ router.get('/:id/sdk/cpp', dashboardProtect, async (req, res) => {
 
 router.get('/:id/sdk/python', dashboardProtect, async (req, res) => {
   try {
-    const app = await Application.findOne({ _id: req.params.id, owner: req.user._id }).select('+appSecret');
+    const app = await Application.findOne(appByIdQuery(req.params.id, req.user)).select('+appSecret');
     if (!app) return res.status(404).json({ success: false, message: 'Not found' });
 
     const { buildPythonWheel } = require('../utils/pythonSdk');
